@@ -30,6 +30,13 @@ export async function resumePaintingProductionJob(jobId) {
   return warehouseMobileRequest('painting-job-resume', { job_id: jobId });
 }
 
+export async function setPaintingProductionJobUnitsCompleted(jobId, completedCount) {
+  return warehouseMobileRequest('painting-job-check-unit', {
+    job_id: jobId,
+    completed_count: completedCount,
+  });
+}
+
 export async function finishPaintingProductionJob(jobId, { destination = 'delivery' } = {}) {
   return warehouseMobileRequest('painting-job-finish', {
     job_id: jobId,

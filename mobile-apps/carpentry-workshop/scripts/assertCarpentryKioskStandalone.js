@@ -64,6 +64,12 @@ if (!fs.existsSync(topBarAppRoot)) {
   process.exit(1);
 }
 
+const localeHook = path.join(__dirname, '..', 'productionKiosk', 'hooks', 'useProductionKioskLocale.js');
+if (!fs.existsSync(localeHook) || fs.readFileSync(localeHook, 'utf8').includes('subscribeProductionKioskLocale')) {
+  console.error('FAIL: productionKiosk locale hook must not call subscribe — run npm run materialize');
+  process.exit(1);
+}
+
 const carpentryAccessHook = path.join(__dirname, '..', 'hooks', 'useCarpentryAccessGrant.js');
 if (!fs.existsSync(carpentryAccessHook)) {
   console.error('FAIL: hooks/useCarpentryAccessGrant.js missing — restore from git or run materialize');

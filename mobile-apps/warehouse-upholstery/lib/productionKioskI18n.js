@@ -465,6 +465,10 @@ const UI_STRINGS = {
     en: 'Apply completed count',
     ar: 'تأكيد العدد المكتمل',
   },
+  quoteLineCompletedOnlyIncrease: {
+    en: 'Completed quantity can only go up. Use End order when the quote is finished.',
+    ar: 'يمكن زيادة الكمية المكتملة فقط. استخدم إنهاء الطلب عند اكتمال العرض.',
+  },
   upholsteryUnitTapHint: {
     en: 'Tap each unit when that piece is ready (Floor 2 batch jobs).',
     ar: 'اضغط كل وحدة عند جهوزية القطعة (دفعات الطابق 2).',

@@ -38,6 +38,8 @@ import {
 import ProductionJobMaterialsModal from '../components/ProductionJobMaterialsModal';
 import { QuoteProductionOrderBadges } from '../shared/quoteProductionOrderUi';
 import { QuoteProductionDispositionModal, QuoteProductionWorkshopLineRows } from '../shared/quoteProductionPartialUi';
+import JobCompletedUnitsRow from '../shared/components/JobCompletedUnitsRow';
+// One shared stepper only — do not declare JobCompletedUnitsRow in this file.
 import { theme } from '../shared/theme';
 import RunningJobElapsed from '../components/RunningJobElapsed';
 import JobMaterialsInlineList from '../shared/components/JobMaterialsInlineList';
@@ -141,26 +143,53 @@ function QuoteOrderJobCard({
         </Text>
       </View>
       <QuoteProductionWorkshopLineRows
-        lines={quote.lines}
-        route="upholstery"
-        textAlign={textAlign}
-        tUi={tUi}
-        locale={locale}
-        orderOpen={orderOpen}
-        allowPaintingHandoff={false}
-        allowFloor1Handoff
-        allowDeliveryHandoff
-        onMarkReady={(line, qty) => markUpholsteryQuoteLineReady(
-          quote.quote_id,
-          line.id,
-          qty,
-          { productionLineSet: quote.production_line_set },
-        )}
-        onHandoff={async (line, target, qty) => {
-          await handoffUpholsteryQuoteLine(quote.quote_id, line.id, target, qty);
-          onQuoteLinesChanged?.();
-        }}
-      />
+          lines={quote.lines}
+          route="upholstery"
+          textAlign={textAlign}
+          tUi={tUi}
+          locale={locale}
+          orderOpen={orderOpen}
+          allowPaintingHandoff={false}
+          allowFloor1Handoff
+          allowDeliveryHandoff
+          useCompletedQtyStepper
+          onSetCompleted={async (line, count) => {
+            const completed = Math.max(0, Number(line.production_completed_qty) || 0);
+            const next = Math.max(0, Math.floor(Number(count) || 0));
+            if (next === completed) return 0;
+            if (next < completed) {
+              Alert.alert(
+                tUi('upholsteryCompletedItemsLabel', locale),
+                tUi('quoteLineCompletedOnlyIncrease', locale),
+              );
+              return 0;
+            }
+            const add = next - completed;
+            try {
+              await markUpholsteryQuoteLineReady(
+                quote.quote_id,
+                line.id,
+                add,
+                { productionLineSet: quote.production_line_set },
+              );
+              onQuoteLinesChanged?.();
+              return add;
+            } catch (err) {
+              Alert.alert(tUi('quoteOrderFailed', locale), err?.message || String(err));
+              return 0;
+            }
+          }}
+          onMarkReady={(line, qty) => markUpholsteryQuoteLineReady(
+            quote.quote_id,
+            line.id,
+            qty,
+            { productionLineSet: quote.production_line_set },
+          )}
+          onHandoff={async (line, target, qty) => {
+            await handoffUpholsteryQuoteLine(quote.quote_id, line.id, target, qty);
+            onQuoteLinesChanged?.();
+          }}
+        />
       {quote?.completed_at ? (
         <Text style={[kiosk.metaLine, { textAlign: 'center' }]}>
           {tUi('quoteOrderLockedViewOnly', locale)}
@@ -210,73 +239,6 @@ function QuoteOrderJobCard({
         </Pressable>
       </View>
       )}
-    </View>
-  );
-}
-
-function JobCompletedUnitsRow({
-  jobId,
-  productQty,
-  savedCount,
-  locale,
-  textAlign,
-  disabled,
-  onApply,
-}) {
-  const [draft, setDraft] = useState(String(savedCount));
-  useEffect(() => {
-    setDraft(String(savedCount));
-  }, [savedCount, jobId]);
-
-  const clamp = (n) => Math.max(0, Math.min(productQty, n));
-  const parsed = () => clamp(Math.floor(Number(String(draft).replace(/\D/g, '')) || 0));
-
-  return (
-    <View style={styles.unitBlock}>
-      <Text style={[styles.unitHeader, { textAlign }]}>
-        {tUi('upholsteryCompletedItemsLabel', locale)}
-        <Text style={styles.unitHeaderMuted}>
-          {` (${savedCount} / ${productQty})`}
-        </Text>
-      </Text>
-      <Text style={[kiosk.hint, { textAlign, marginBottom: 8 }]}>
-        {tUi('upholsteryCompletedItemsHint', locale)}
-      </Text>
-      <View style={styles.unitEntryRow}>
-        <Pressable
-          style={styles.unitStepBtn}
-          disabled={disabled}
-          onPress={() => setDraft(String(clamp(parsed() - 1)))}
-          accessibilityLabel="-"
-        >
-          <MaterialCommunityIcons name="minus" size={28} color={KIOSK_ICON_BLUE_ON_DARK} />
-        </Pressable>
-        <TextInput
-          style={styles.unitCountInput}
-          value={draft}
-          onChangeText={setDraft}
-          keyboardType="number-pad"
-          editable={!disabled}
-          selectTextOnFocus
-          maxLength={4}
-        />
-        <Pressable
-          style={styles.unitStepBtn}
-          disabled={disabled}
-          onPress={() => setDraft(String(clamp(parsed() + 1)))}
-          accessibilityLabel="+"
-        >
-          <MaterialCommunityIcons name="plus" size={28} color={KIOSK_ICON_BLUE_ON_DARK} />
-        </Pressable>
-        <Pressable
-          style={[styles.unitConfirmBtn, disabled && styles.unitConfirmBtnDisabled]}
-          disabled={disabled}
-          onPress={() => onApply?.(jobId, parsed())}
-          accessibilityLabel={tUi('upholsteryCompletedItemsApply', locale)}
-        >
-          <MaterialCommunityIcons name="check-circle" size={46} color="#22c55e" />
-        </Pressable>
-      </View>
     </View>
   );
 }
@@ -336,12 +298,13 @@ function JobCard({
 
       {showCompletedItems ? (
         <JobCompletedUnitsRow
-          jobId={jobId}
+          rowKey={jobId}
           productQty={productQty}
           savedCount={savedCount}
           locale={locale}
           textAlign={textAlign}
           disabled={Boolean(unitBusy || busy)}
+          tUi={tUi}
           onApply={onSetUnitsCompleted}
         />
       ) : null}

@@ -98,6 +98,15 @@ try {
 
   const jobsScreen = read('mobile-apps/carpentry-workshop/screens/JobsScreen.js');
   assert(
+    (jobsScreen.match(/import \{ QuoteProductionOrderBadges \}/g) || []).length === 1,
+    'JobsScreen must import QuoteProductionOrderBadges once',
+  );
+  const createScreen = read('mobile-apps/carpentry-workshop/productionKiosk/screens/CreateScreen.js');
+  assert(
+    createScreen.includes("from '../../components/KioskStickyFooter'"),
+    'CreateScreen must import KioskStickyFooter from app-root components',
+  );
+  assert(
     !jobsScreen.includes("tUi('upholsteryJobIntro'"),
     'orders page must not show intro above search',
   );
@@ -119,6 +128,15 @@ try {
 
   const localeLib = read('mobile-apps/carpentry-workshop/productionKiosk/lib/productionKioskLocale.js');
   assert(localeLib.includes('subscribeProductionKioskLocale'), 'carpentry locale must broadcast changes app-wide');
+  const localeHook = read('mobile-apps/carpentry-workshop/productionKiosk/hooks/useProductionKioskLocale.js');
+  assert(
+    !localeHook.includes('subscribeProductionKioskLocale'),
+    'locale hook must not call subscribeProductionKioskLocale (AuthGate crash)',
+  );
+  assert(
+    localeHook.includes('AsyncStorageModule'),
+    'locale hook must namespace-import AsyncStorage',
+  );
 
   const localeScreens = [
     'DashboardScreen.js',

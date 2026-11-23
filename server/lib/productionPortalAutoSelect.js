@@ -122,7 +122,10 @@ export async function autoSelectProductionPortalCatalog(sb, assemblyId, {
     };
   }
   if (channel === 'upholstery') {
-    const qty = Math.max(1, Math.floor(Number(floor2ProductQty ?? initialQuantity) || 1));
+    const qty = resolveFloor2SeedQuantity(
+      { floor2_product_qty: floor2ProductQty, initial_quantity: initialQuantity },
+      initialQuantity,
+    );
     await saveUpholsteryProductSelection(sb, id, true);
     await saveUpholsteryRawAssemblyLink(sb, id, id);
     let floor2_added = false;

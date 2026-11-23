@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <title>دليل تطبيق الدهان — إنفينيتي هوم</title>
+  <style>
+    @page { size: A4; margin: 14mm 12mm; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: "Segoe UI", "Tahoma", "Noto Naskh Arabic", "Arial", sans-serif;
+      color: #0f172a;
+      background: #fff;
+      font-size: 12.5px;
+      line-height: 1.55;
+    }
+    h1 { font-size: 26px; margin: 0 0 6px; color: #0d47a1; }
+    h2 { font-size: 16px; margin: 0 0 10px; color: #0d47a1; border-bottom: 2px solid #0d47a1; padding-bottom: 4px; }
+    h3 { font-size: 13.5px; margin: 0 0 6px; color: #1e3a5f; }
+    p { margin: 0 0 8px; }
+    .sub { color: #475569; margin-bottom: 16px; }
+    .page { page-break-after: always; }
+    .page:last-child { page-break-after: auto; }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .badge {
+      background: #0d47a1;
+      color: #fff;
+      font-weight: 700;
+      padding: 6px 12px;
+      border-radius: 8px;
+      white-space: nowrap;
+    }
+    .flow { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+    .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+    .box {
+      border: 1.5px solid #334155;
+      border-radius: 10px;
+      padding: 8px 10px;
+      min-width: 140px;
+      text-align: center;
+      background: #f8fafc;
+    }
+    .box b { display: block; font-size: 13px; }
+    .box small { color: #475569; }
+    .box.start { background: #0d47a1; color: #fff; border-color: #0d47a1; }
+    .box.start small { color: #dbeafe; }
+    .box.create { background: #ecfdf5; border-color: #059669; }
+    .box.mfg { background: #eff6ff; border-color: #2563eb; }
+    .box.orders { background: #fff7ed; border-color: #ea580c; }
+    .box.end { background: #f1f5f9; }
+    .arrow { text-align: center; color: #0d47a1; font-size: 18px; font-weight: 700; line-height: 1; }
+    .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .card {
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: #fff;
+      break-inside: avoid;
+    }
+    .card h3 { margin-bottom: 4px; }
+    ol, ul { margin: 4px 0 0; padding-right: 18px; }
+    li { margin-bottom: 3px; }
+    .icon { font-weight: 800; color: #0d47a1; }
+    table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+    th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: right; vertical-align: top; }
+    th { background: #0d47a1; color: #fff; }
+    .note {
+      background: #fff7ed;
+      border: 1px solid #fdba74;
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-top: 10px;
+    }
+    .footer { color: #64748b; font-size: 11px; margin-top: 12px; }
+  </style>
+</head>
+<body>
+
+<section class="page">
+  <div class="header">
+    <div>
+      <h1>دليل استخدام تطبيق الدهان</h1>
+      <p class="sub">إنفينيتي هوم — تطبيق الورشة على الهاتف. كل الشاشات بالعربية (زر الترجمة أعلى الصفحة).</p>
+    </div>
+    <div class="badge">الدهان</div>
+  </div>
+
+  <h2>١) خريطة التطبيق من الشاشة الرئيسية</h2>
+  <div class="flow">
+    <div class="row">
+      <div class="box start"><b>تسجيل الدخول</b><small>حساب جوجل المعتمد في صلاحيات المستخدم</small></div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="row">
+      <div class="box start"><b>الرئيسية</b><small>مربع واحد: الطلبات</small></div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="row">
+      <div class="box orders"><b>الطلبات</b><small>مهام مرسلة من النجارة + مرتجعات حسن للدهان</small></div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="grid3">
+      <div class="box create"><b>النجارة</b><small>ترسل WIP الطابق ٢ أو أسطر العرض الجاهزة للدهان</small></div>
+      <div class="box end"><b>الطابق ١</b><small>مخزون منتهٍ بعد إيقاف → تخزين الطابق ١</small></div>
+      <div class="box end"><b>تطبيق التسليم</b><small>حجز للعميل / الصالة بعد إيقاف → قائمة التسليم</small></div>
+    </div>
+  </div>
+  <p class="note">الدهان <b>لا ينشئ</b> منتجات في الكتالوج و<b>لا يخصم</b> الطابق ٢. العمل يصل من تطبيق النجارة. المواد على المهمة هي <b>دهانات المستودع فقط</b>.</p>
+  <p class="footer">دليل داخلي لورشة الدهان — Infinity Home</p>
+</section>
+
+<section class="page">
+  <h2>٢) ماذا تفعل كل صفحة؟</h2>
+  <div class="grid3" style="grid-template-columns: 1fr 1fr; gap: 10px;">
+    <div class="card">
+      <h3>الرئيسية</h3>
+      <p>بعد تسجيل الدخول تفتح فقط <b>الطلبات</b> (مهام الدهان). الشريط العلوي فيه <b>ع / EN</b> والتنبيهات.</p>
+    </div>
+    <div class="card">
+      <h3>الطلبات — مهام النجارة</h3>
+      <p>كل بطاقة مهمة دهان أرسلتها النجارة (طلب كامل أو كمية جزئية مثل ٣ من ٨). الشارة: WIP الطابق ٢ أو طلب نجارة جاهز. «أرسله» هو النجّار.</p>
+      <ol>
+        <li><b>تشغيل ▶</b> بدء أو استئناف العداد.</li>
+        <li><b>إيقاف مؤقت ⏸</b> إيقاف الوقت دون إنهاء.</li>
+        <li>صف <b>البنود المكتملة</b> (− / رقم / + ثم ✓): كم قطعة من هذه المهمة دُهنت وجاهزة. احفظ بـ ✓.</li>
+        <li><b>مفتاح الربط</b> مواد المستودع (دهان / تينر) — المستودع ١ / ٢ / ٣. لا يُخصم الطابق ٢ هنا.</li>
+        <li><b>إيقاف ⏹</b> اكتب OK ثم اختر <b>قائمة التسليم</b> أو <b>تخزين الطابق ١</b>. تذهب كمية المهمة كاملة إلى تلك الوجهة.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>الطلبات — الإصلاحات</h3>
+      <p>مرتجعات حسن لقسم الدهان تظهر في نفس القائمة بشارة <b>مرتجع</b>.</p>
+      <ol>
+        <li>▶ قبول الإصلاح وبدء العمل.</li>
+        <li>⏸ إيقاف مؤقت.</li>
+        <li>مفتاح الربط إن استُخدمت مواد المستودع.</li>
+        <li>⏹ إنهاء — ينضم الإصلاح إلى قائمة الإصلاحات في تطبيق التسليم (بانتظار السائق). لا يُزاد مخزون الطوابق.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>العمل الجزئي من النجارة</h3>
+      <p>إذا حدّدت النجارة ٣ من ٨ جاهزة وأرسلت تلك الثلاثة للدهان، ترى مهمة بكمية ٣ فقط. استخدم عدّاد البنود المكتملة على هذه الثلاثة ثم أوقف عند انتهاء الدهان. الخمسة الباقية تبقى في النجارة حتى يرسلوها.</p>
+    </div>
+  </div>
+</section>
+
+<section class="page">
+  <h2>٣) معنى الأزرار</h2>
+  <table>
+    <thead>
+      <tr><th>الرمز</th><th>المعنى</th><th>متى تستخدمه</th></tr>
+    </thead>
+    <tbody>
+      <tr><td class="icon">▶ تشغيل</td><td>بدء أو استئناف العداد</td><td>بدء دهان مهمة نجارة أو إصلاح</td></tr>
+      <tr><td class="icon">⏸ إيقاف مؤقت</td><td>إيقاف العداد دون إنهاء</td><td>استراحة أو انتظار دهان / جفاف</td></tr>
+      <tr><td class="icon">⏹ إيقاف / إنهاء</td><td>إغلاق المهمة واختيار الوجهة</td><td>قائمة التسليم أو تخزين الطابق ١</td></tr>
+      <tr><td class="icon">مفتاح الربط</td><td>مواد المستودع</td><td>تسجيل الدهان من المستودعات — ليس الطابق ٢</td></tr>
+      <tr><td class="icon">− / كمية / + ثم ✓</td><td>البنود المكتملة على مهمة الدهان</td><td>بعد دهان القطع — ثم إيقاف عند انتهاء المهمة</td></tr>
+    </tbody>
+  </table>
+
+  <h2 style="margin-top:16px">٤) أين تذهب القطعة؟</h2>
+  <table>
+    <thead>
+      <tr><th>العمل</th><th>النتيجة</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>النجارة ترسل WIP الطابق ٢ أو سطر عرض (كامل أو جزئي)</td><td>تظهر المهمة في طلبات الدهان بتلك الكمية</td></tr>
+      <tr><td>حفظ البنود المكتملة (✓)</td><td>يُحفظ التقدم على المهمة (مثلاً ٢ من ٣ دُهنت)</td></tr>
+      <tr><td>إيقاف → قائمة التسليم</td><td>حجز افتراضي في تطبيق التوصيل بنفس العميل إن كانت مهمة عرض</td></tr>
+      <tr><td>إيقاف → تخزين الطابق ١</td><td>يُضاف المخزون المنتهي إلى الطابق ١</td></tr>
+      <tr><td>إنهاء إصلاح دهان</td><td>قائمة الإصلاحات في تطبيق التسليم — دون زيادة الطوابق</td></tr>
+    </tbody>
+  </table>
+
+  <div class="note">
+    <b>صلاحيات:</b> إذا ظهرت «الوصول مرفوض» فالمستخدم غير مفعّل في بوابة الويب → صلاحيات المستخدم → الإنتاج → الدهان. بعد التفعيل اضغط «تحقق من الصلاحية» في التطبيق.
+  </div>
+  <p class="footer">احتفظ بهذا الدليل بجانب أجهزة الورشة. يطابق شاشات تطبيق الدهان الحالية.</p>
+</section>
+
+</body>
+</html>

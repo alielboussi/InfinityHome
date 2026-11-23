@@ -447,6 +447,18 @@ const UI_STRINGS = {
     en: 'Done — in the Delivery app queue (virtual hold, not on floor stock).',
     ar: 'تم — في قائمة تطبيق التسليم (حجز افتراضي، ليس على مخزون الطوابق).',
   },
+  upholsteryCompletedItemsLabel: {
+    en: 'Completed items',
+    ar: 'البنود المكتملة',
+  },
+  upholsteryCompletedItemsHint: {
+    en: 'Enter how many pieces are ready, then tap ✓ to save.',
+    ar: 'أدخل عدد القطع الجاهزة ثم اضغط ✓ للحفظ.',
+  },
+  upholsteryCompletedItemsApply: {
+    en: 'Apply completed count',
+    ar: 'تأكيد العدد المكتمل',
+  },
   paintingJobFinishDoneFloor1: {
     en: 'Done — finished stock credited on Warehouse Floor 1.',
     ar: 'تم — أُضيف المخزون الجاهز إلى الطابق 1.',

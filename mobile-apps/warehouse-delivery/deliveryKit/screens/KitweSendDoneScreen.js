@@ -77,7 +77,7 @@ export default function KitweSendDoneScreen({ route, navigation }) {
         documentKind={documentKind}
         customerName={customerName}
         customerPhone={customerPhone}
-        autoPrintOnOpen
+        autoPrintOnOpen={false}
         onDone={() => setPrintOpen(false)}
       />
     </>

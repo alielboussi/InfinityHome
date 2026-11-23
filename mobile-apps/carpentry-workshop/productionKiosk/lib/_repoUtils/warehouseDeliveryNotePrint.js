@@ -28,9 +28,8 @@ export async function buildWarehouseDeliveryNoteHtml({
     : null;
   const savedGroups = sanitizeDeliveryNotePrintGroups(meta.print_groups);
   const isOrder = isDeliveryCustomerOrderSession(session);
-  const documentKind = isOrder
-    ? 'order_delivery'
-    : (String(meta.document_kind || 'delivery').trim() || 'delivery');
+  const documentKind = String(meta.document_kind || '').trim()
+    || (isOrder ? 'order_delivery' : 'delivery');
   const printGroups = savedGroups.length
     ? savedGroups
     : buildDeliveryPrintGroupsFromEntries(entries, formatter);
@@ -54,6 +53,7 @@ export async function buildWarehouseDeliveryNoteHtml({
     documentKind,
     customerName: meta.customer_name || '',
     customerPhone: meta.customer_phone || '',
+    partialDelivery: Boolean(meta.partial_delivery),
   });
 }
 

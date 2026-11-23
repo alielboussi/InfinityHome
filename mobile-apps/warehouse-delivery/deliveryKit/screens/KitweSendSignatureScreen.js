@@ -11,6 +11,7 @@ import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { useDeliveryDrivers } from '../../hooks/useDeliveryDrivers';
 import { getProductionDispatcherLabelSync } from '../lib/productionDispatcherLabel';
 import { saveLocalSentDelivery } from '../lib/deliverySentLocalStore';
+import { goDashboardThenOpenNote } from '../lib/goDashboardThenOpenNote';
 import { clearDeliveryWorkspace } from '../lib/productionDeliveryWorkspaceCache';
 import { deliveryQueueReturnRoute } from '../lib/deliveryQueueNavigation';
 import { tUi } from '../lib/productionKioskI18n';
@@ -147,6 +148,8 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
         groups,
         print_groups: printGroups,
         document_kind: documentKind,
+        customer_name: String(route.params?.customerName || repairCustomerName || '').trim(),
+        customer_phone: String(route.params?.customerPhone || repairCustomerPhone || '').trim(),
         ...(returnOrderId ? { return_order_id: returnOrderId } : {}),
       });
 
@@ -158,6 +161,7 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
       const resolvedDriverPhone = useCustomer ? customerDriverPhone : '';
       const noteCustomerName = String(route.params?.customerName || repairCustomerName || '').trim();
       const noteCustomerPhone = String(route.params?.customerPhone || repairCustomerPhone || '').trim();
+      const partialDelivery = Boolean(route.params?.partialDelivery);
 
       await saveLocalSentDelivery({
         session_id: sessionId,
@@ -167,20 +171,21 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
         status: 'submitted',
         submitted_at: submittedAt,
         driver_name: resolvedDriverName,
+        driver_phone: resolvedDriverPhone,
         dispatched_by_name: dispatchedByName,
         customer_name: noteCustomerName,
         customer_phone: noteCustomerPhone,
         driver_signature_url: signatureUrl,
         driver_signature_data_uri: dataUri,
         print_groups: printGroups,
+        partial_delivery: partialDelivery,
       }).catch(() => {});
 
-      navigation.replace('KitweSendDone', {
-        deliveryNumber,
-        printNoteNumber: printNoteNumber || deliveryNumber,
+      goDashboardThenOpenNote(navigation, {
+        deliveryNumber: printNoteNumber || deliveryNumber,
         driverName: resolvedDriverName,
         driverPhone: resolvedDriverPhone,
-        supervisorName: dispatchedByName,
+        dispatchedBy: dispatchedByName,
         driverSignatureDataUri: dataUri,
         driverSignatureUrl: signatureUrl,
         printGroups,
@@ -188,6 +193,7 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
         documentKind,
         customerName: noteCustomerName,
         customerPhone: noteCustomerPhone,
+        partialDelivery,
       });
     } catch (err) {
       try {

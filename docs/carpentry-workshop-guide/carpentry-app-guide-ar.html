@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <title>دليل تطبيق النجارة — إنفينيتي هوم</title>
+  <style>
+    @page { size: A4; margin: 14mm 12mm; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: "Segoe UI", "Tahoma", "Noto Naskh Arabic", "Arial", sans-serif;
+      color: #0f172a;
+      background: #fff;
+      font-size: 12.5px;
+      line-height: 1.55;
+    }
+    h1 { font-size: 26px; margin: 0 0 6px; color: #0d47a1; }
+    h2 { font-size: 16px; margin: 0 0 10px; color: #0d47a1; border-bottom: 2px solid #0d47a1; padding-bottom: 4px; }
+    h3 { font-size: 13.5px; margin: 0 0 6px; color: #1e3a5f; }
+    p { margin: 0 0 8px; }
+    .sub { color: #475569; margin-bottom: 16px; }
+    .page { page-break-after: always; }
+    .page:last-child { page-break-after: auto; }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .badge {
+      background: #0d47a1;
+      color: #fff;
+      font-weight: 700;
+      padding: 6px 12px;
+      border-radius: 8px;
+      white-space: nowrap;
+    }
+    .flow {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 8px;
+    }
+    .row {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .box {
+      border: 1.5px solid #334155;
+      border-radius: 10px;
+      padding: 8px 10px;
+      min-width: 140px;
+      text-align: center;
+      background: #f8fafc;
+    }
+    .box b { display: block; font-size: 13px; }
+    .box small { color: #475569; }
+    .box.start { background: #0d47a1; color: #fff; border-color: #0d47a1; }
+    .box.start small { color: #dbeafe; }
+    .box.create { background: #ecfdf5; border-color: #059669; }
+    .box.mfg { background: #eff6ff; border-color: #2563eb; }
+    .box.orders { background: #fff7ed; border-color: #ea580c; }
+    .box.end { background: #f1f5f9; }
+    .arrow { text-align: center; color: #0d47a1; font-size: 18px; font-weight: 700; line-height: 1; }
+    .grid3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+    }
+    .card {
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: #fff;
+      break-inside: avoid;
+    }
+    .card h3 { margin-bottom: 4px; }
+    ol, ul { margin: 4px 0 0; padding-right: 18px; }
+    li { margin-bottom: 3px; }
+    .legend {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 16px;
+      margin-top: 8px;
+    }
+    .icon { font-weight: 800; color: #0d47a1; }
+    table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+    th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: right; vertical-align: top; }
+    th { background: #0d47a1; color: #fff; }
+    .note {
+      background: #fff7ed;
+      border: 1px solid #fdba74;
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-top: 10px;
+    }
+    .footer { color: #64748b; font-size: 11px; margin-top: 12px; }
+  </style>
+</head>
+<body>
+
+<section class="page">
+  <div class="header">
+    <div>
+      <h1>دليل استخدام تطبيق النجارة</h1>
+      <p class="sub">إنفينيتي هوم — تطبيق الورشة على الهاتف. كل الشاشات بالعربية (زر الترجمة أعلى الصفحة).</p>
+    </div>
+    <div class="badge">الأثاث الخشبي</div>
+  </div>
+
+  <h2>١) خريطة التطبيق من الشاشة الرئيسية</h2>
+  <div class="flow">
+    <div class="row">
+      <div class="box start"><b>تسجيل الدخول</b><small>حساب جوجل المعتمد في صلاحيات المستخدم</small></div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="row">
+      <div class="box start"><b>الرئيسية</b><small>ثلاث مربعات فقط</small></div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="grid3">
+      <div class="box create"><b>إنشاء قطعة جديدة</b><small>منتج جديد → مخزون الطابق ٢ + ملصق زيبرا</small></div>
+      <div class="box mfg"><b>تصنيع</b><small>اختر قطعة وكمية → تفتح مهمة في الطلبات</small></div>
+      <div class="box orders"><b>الطلبات</b><small>عروض المصنع + مهام التصنيع + الإصلاحات</small></div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="grid3">
+      <div class="box end"><b>الطابق ٢ (WIP)</b><small>قطع جاهزة في المستودع قبل الدهان أو التسليم</small></div>
+      <div class="box end"><b>قسم الدهان</b><small>من إنهاء عرض المصنع أو ضغط مطوّل في التصنيع</small></div>
+      <div class="box end"><b>تطبيق التسليم</b><small>حجز للعميل / التوصيل بعد إنهاء المهمة أو الطلب</small></div>
+    </div>
+  </div>
+  <p class="note">الزر أعلى اليسار/اليمين <b>ع / EN</b> يبدّل العربية والإنجليزية في كل الصفحات.</p>
+  <p class="footer">دليل داخلي لورشة النجارة — Infinity Home</p>
+</section>
+
+<section class="page">
+  <h2>٢) ماذا تفعل كل صفحة؟</h2>
+  <div class="grid3" style="grid-template-columns: 1fr 1fr; gap: 10px;">
+    <div class="card">
+      <h3>إنشاء قطعة جديدة</h3>
+      <p>لإضافة منتج نجارة غير موجود في الكتالوج. يُحفظ مباشرة في <b>مخزون الطابق ٢</b> (ليس الطابق ١) ويُطبع ملصق زيبرا (الاسم، SKU، باركود، صورة).</p>
+      <ol>
+        <li>اكتب الاسم الأساسي بالإنجليزية إن لزم، ثم اختر نوع القطعة (طاولة، بوفيه، سرير…).</li>
+        <li>أدخل الأبعاد بالسنتيمتر والكمية.</li>
+        <li>صوّر القطعة عند الطلب ثم اضغط حفظ.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>تصنيع</h3>
+      <p>شبكة منتجات الطابق ٢. <b>الضغط العادي لا يخصم المخزون هنا</b> — يفتح مهمة عمل في صفحة الطلبات.</p>
+      <ol>
+        <li>ابحث أو امسح باركود/QR الملصق.</li>
+        <li>اضغط البطاقة → أدخل الكمية → تبدأ مهمة تصنيع.</li>
+        <li>اضغط مطوّلاً على بطاقة فيها كمية على الطابق ٢ لإرسال كمية إلى <b>قسم الدهان</b> (يُخصم من الطابق ٢).</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>الطلبات — عروض المصنع (QT#)</h3>
+      <p>طلبات العملاء/الصالة المرسلة للنجارة. رقم العرض أعلى اليمين. شارات: طلب عميل أو طلب صالة.</p>
+      <ol>
+        <li><b>تشغيل ▶</b> قبول الطلب وبدء العداد.</li>
+        <li><b>إيقاف مؤقت ⏸</b> إيقاف الوقت.</li>
+        <li>مربع السطر: كمية جاهزة ثم اختيار إرسال للدهان أو تخزين الطابق ١.</li>
+        <li><b>إيقاف ⏹</b> إنهاء الطلب: تسليم أو الطابق ٢ إلى الدهان.</li>
+        <li><b>مفتاح الربط</b> مواد المستودع المستخدمة في الطلب.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>الطلبات — مهام التصنيع</h3>
+      <p>المهام التي فتحتها من صفحة التصنيع. العداد يعمل أثناء التنفيذ.</p>
+      <ol>
+        <li>▶ تشغيل / ⏸ إيقاف مؤقت للعداد.</li>
+        <li>مفتاح الربط: أضف مواد المستودع (مسح أو بحث) واختر المستودع ١ / ٢ / ٣.</li>
+        <li>⏹ إنهاء: إن لزم اختر المستودع للخصم، ثم <b>الطابق ١</b> أو <b>التسليم</b>.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>الطلبات — الإصلاحات</h3>
+      <p>مرتجعات العملاء لقسم النجارة تظهر في نفس قائمة الطلبات (شارة إصلاح).</p>
+      <ol>
+        <li>▶ قبول الإصلاح وبدء العمل.</li>
+        <li>⏸ إيقاف مؤقت.</li>
+        <li>مفتاح الربط لإضافة مواد إن احتاج الإصلاح.</li>
+        <li>⏹ إكمال الإصلاح.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>البحث في الطلبات</h3>
+      <p>ابحث برقم العرض QT، اسم العميل، أو رقم الهاتف. القائمة تجمع العروض والمهام والإصلاحات معاً.</p>
+    </div>
+  </div>
+</section>
+
+<section class="page">
+  <h2>٣) معنى الأزرار</h2>
+  <table>
+    <thead>
+      <tr><th>الرمز</th><th>المعنى</th><th>متى تستخدمه</th></tr>
+    </thead>
+    <tbody>
+      <tr><td class="icon">▶ تشغيل</td><td>بدء أو استئناف العمل</td><td>قبول عرض مصنع، تشغيل مهمة، قبول إصلاح</td></tr>
+      <tr><td class="icon">⏸ إيقاف مؤقت</td><td>إيقاف العداد دون إنهاء</td><td>استراحة أو انتظار مادة</td></tr>
+      <tr><td class="icon">⏹ إيقاف / إنهاء</td><td>إغلاق العمل واختيار الوجهة</td><td>عرض مصنع: تسليم أو دهان · مهمة: طابق ١ أو تسليم</td></tr>
+      <tr><td class="icon">مفتاح الربط</td><td>مواد المستودع</td><td>خصم الخشب/المواد من المستودعات قبل الإنهاء</td></tr>
+      <tr><td class="icon">مربع السطر</td><td>كمية جاهزة من سطر العرض</td><td>بعد تصنيع جزء من الكمية المطلوبة</td></tr>
+      <tr><td class="icon">ضغط مطوّل في التصنيع</td><td>إرسال للطابق ٢ → الدهان</td><td>قطعة موجودة مسبقاً على الطابق ٢</td></tr>
+    </tbody>
+  </table>
+
+  <h2 style="margin-top:16px">٤) أين تذهب القطعة؟</h2>
+  <table>
+    <thead>
+      <tr><th>العمل</th><th>النتيجة</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>حفظ في إنشاء قطعة جديدة</td><td>مخزون الطابق ٢ + ملصقات زيبرا</td></tr>
+      <tr><td>ضغط عادي في التصنيع</td><td>مهمة في الطلبات — لا يُخصم الطابق ٢ بعد</td></tr>
+      <tr><td>إنهاء مهمة + مواد المستودع</td><td>خصم BOM من المستودع وإضافة WIP للطابق ٢ ثم طابق ١ أو تسليم</td></tr>
+      <tr><td>ضغط مطوّل في التصنيع</td><td>خصم من الطابق ٢ وإرسال لقسم الدهان</td></tr>
+      <tr><td>إنهاء عرض مصنع → دهان</td><td>WIP من الطابق ٢ إلى تطبيق الدهان</td></tr>
+      <tr><td>إنهاء عرض مصنع → تسليم</td><td>حجز في تطبيق التوصيل</td></tr>
+    </tbody>
+  </table>
+
+  <div class="note">
+    <b>صلاحيات:</b> إذا ظهرت «الوصول مرفوض» فالمستخدم غير مفعّل في بوابة الويب → صلاحيات المستخدم → الإنتاج → ورشة النجارة. بعد التفعيل اضغط «تحقق من الصلاحية» في التطبيق.
+  </div>
+  <p class="footer">احتفظ بهذا الدليل بجانب أجهزة الورشة. يطابق شاشات تطبيق Carpentry الحالية.</p>
+</section>
+
+</body>
+</html>

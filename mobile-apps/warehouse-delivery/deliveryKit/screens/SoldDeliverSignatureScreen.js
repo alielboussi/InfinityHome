@@ -12,6 +12,7 @@ import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { useDeliveryDrivers } from '../../hooks/useDeliveryDrivers';
 import { tUi } from '../lib/productionKioskI18n';
 import { saveLocalSentDelivery } from '../lib/deliverySentLocalStore';
+import { goDashboardThenOpenNote } from '../lib/goDashboardThenOpenNote';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 
 export default function SoldDeliverSignatureScreen({ route, navigation }) {
@@ -97,16 +98,15 @@ export default function SoldDeliverSignatureScreen({ route, navigation }) {
         print_groups: out.print_groups || printGroups,
       }).catch(() => {});
 
-      navigation.replace('SoldDeliverDone', {
+      goDashboardThenOpenNote(navigation, {
         deliveryNumber: out.delivery_number || deliveryNumber,
         driverName: resolvedDriver,
         driverPhone: resolvedDriverPhone,
-        supervisorName: getProductionDispatcherLabelSync() || '',
+        dispatchedBy: getProductionDispatcherLabelSync() || '',
         printGroups: out.print_groups || printGroups,
         driverSignatureDataUri: dataUri,
         driverSignatureUrl: out.driver_signature_url || '',
         submittedAt,
-        sessionId: resolvedSessionId || storageSendId,
         documentKind: 'sold_delivery',
         customerName: out.customer_name || customerName,
         customerPhone: out.customer_phone || customerPhone,

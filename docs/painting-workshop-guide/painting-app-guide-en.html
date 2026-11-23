@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8" />
+  <title>Painting app guide — Infinity Home</title>
+  <style>
+    @page { size: A4; margin: 14mm 12mm; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: "Segoe UI", "Tahoma", "Arial", sans-serif;
+      color: #0f172a;
+      background: #fff;
+      font-size: 12.5px;
+      line-height: 1.55;
+    }
+    h1 { font-size: 26px; margin: 0 0 6px; color: #0d47a1; }
+    h2 { font-size: 16px; margin: 0 0 10px; color: #0d47a1; border-bottom: 2px solid #0d47a1; padding-bottom: 4px; }
+    h3 { font-size: 13.5px; margin: 0 0 6px; color: #1e3a5f; }
+    p { margin: 0 0 8px; }
+    .sub { color: #475569; margin-bottom: 16px; }
+    .page { page-break-after: always; }
+    .page:last-child { page-break-after: auto; }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .badge {
+      background: #0d47a1;
+      color: #fff;
+      font-weight: 700;
+      padding: 6px 12px;
+      border-radius: 8px;
+      white-space: nowrap;
+    }
+    .flow { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+    .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+    .box {
+      border: 1.5px solid #334155;
+      border-radius: 10px;
+      padding: 8px 10px;
+      min-width: 140px;
+      text-align: center;
+      background: #f8fafc;
+    }
+    .box b { display: block; font-size: 13px; }
+    .box small { color: #475569; }
+    .box.start { background: #0d47a1; color: #fff; border-color: #0d47a1; }
+    .box.start small { color: #dbeafe; }
+    .box.create { background: #ecfdf5; border-color: #059669; }
+    .box.mfg { background: #eff6ff; border-color: #2563eb; }
+    .box.orders { background: #fff7ed; border-color: #ea580c; }
+    .box.end { background: #f1f5f9; }
+    .arrow { text-align: center; color: #0d47a1; font-size: 18px; font-weight: 700; line-height: 1; }
+    .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .card {
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: #fff;
+      break-inside: avoid;
+    }
+    .card h3 { margin-bottom: 4px; }
+    ol, ul { margin: 4px 0 0; padding-left: 18px; }
+    li { margin-bottom: 3px; }
+    .icon { font-weight: 800; color: #0d47a1; }
+    table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+    th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; vertical-align: top; }
+    th { background: #0d47a1; color: #fff; }
+    .note {
+      background: #fff7ed;
+      border: 1px solid #fdba74;
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-top: 10px;
+    }
+    .footer { color: #64748b; font-size: 11px; margin-top: 12px; }
+  </style>
+</head>
+<body>
+
+<section class="page">
+  <div class="header">
+    <div>
+      <h1>How to use the Painting app</h1>
+      <p class="sub">Infinity Home workshop phone app. Use the AR / EN button on the top bar on every screen.</p>
+    </div>
+    <div class="badge">Painting</div>
+  </div>
+
+  <h2>1) Map from the home screen</h2>
+  <div class="flow">
+    <div class="row">
+      <div class="box start"><b>Sign in</b><small>Google account allowed in User Access</small></div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="row">
+      <div class="box start"><b>Home</b><small>One tile: Orders</small></div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="row">
+      <div class="box orders"><b>Orders</b><small>Jobs sent from Carpentry + Hassan painting repairs</small></div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="grid3">
+      <div class="box create"><b>Carpentry</b><small>Sends Floor 2 WIP or finished quote lines to paint</small></div>
+      <div class="box end"><b>Floor 1</b><small>Finished stock after Stop → Floor 1 storage</small></div>
+      <div class="box end"><b>Delivery app</b><small>Customer / showroom hold after Stop → Delivery</small></div>
+    </div>
+  </div>
+  <p class="note">Painting does <b>not</b> create catalog items and does <b>not</b> deduct Floor 2. Work arrives from the Carpentry app. Materials on a job are <b>storeroom paints only</b>.</p>
+  <p class="footer">Internal painting workshop guide — Infinity Home</p>
+</section>
+
+<section class="page">
+  <h2>2) What each page is for</h2>
+  <div class="grid3" style="grid-template-columns: 1fr 1fr; gap: 10px;">
+    <div class="card">
+      <h3>Home</h3>
+      <p>After sign-in you only open <b>Orders</b> (paint jobs). The top bar has <b>ع / EN</b> and Alerts for push notifications.</p>
+    </div>
+    <div class="card">
+      <h3>Orders — carpentry jobs</h3>
+      <p>Each card is a paint job Carpentry already sent (full order or a partial qty, for example 3 of 8). Badge shows Floor 2 WIP or finished carpentry order. “Sent by” is the carpenter.</p>
+      <ol>
+        <li><b>Play ▶</b> start or resume the timer.</li>
+        <li><b>Pause ⏸</b> stop the timer without finishing.</li>
+        <li><b>Completed items</b> stepper (− / number / + then ✓): how many pieces of this job are painted and ready. Save with ✓.</li>
+        <li><b>Wrench</b> storeroom materials (paint / thinner) — storeroom 1 / 2 / 3. Floor 2 is never deducted here.</li>
+        <li><b>Stop ⏹</b> type OK, then choose <b>Delivery queue</b> or <b>Floor 1 storage</b>. The whole job qty goes to that destination.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>Orders — repairs</h3>
+      <p>Hassan painting returns appear in the same list with a <b>Return</b> badge.</p>
+      <ol>
+        <li>▶ Accept and start work.</li>
+        <li>⏸ Pause.</li>
+        <li>Wrench if storeroom materials are used.</li>
+        <li>⏹ Complete — the repair joins the Delivery app Repairs queue (awaiting driver). Warehouse floors are not credited.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>Partial work from Carpentry</h3>
+      <p>If Carpentry marked 3 of 8 ready and sent those 3 to Painting, you only see a job of 3. Use the completed-items stepper on those 3, then Stop when the paint job is done. The remaining 5 stay on Carpentry until they send them.</p>
+    </div>
+  </div>
+</section>
+
+<section class="page">
+  <h2>3) What the buttons mean</h2>
+  <table>
+    <thead>
+      <tr><th>Control</th><th>Meaning</th><th>When to use it</th></tr>
+    </thead>
+    <tbody>
+      <tr><td class="icon">▶ Play</td><td>Start or resume the timer</td><td>Begin painting a carpentry job or repair</td></tr>
+      <tr><td class="icon">⏸ Pause</td><td>Stop the timer without finishing</td><td>Break or waiting for paint / drying</td></tr>
+      <tr><td class="icon">⏹ Stop / Finish</td><td>Close the job and choose destination</td><td>Delivery queue or Floor 1 storage</td></tr>
+      <tr><td class="icon">Wrench</td><td>Storeroom materials</td><td>Record paint used from storerooms — not Floor 2</td></tr>
+      <tr><td class="icon">− / qty / + then ✓</td><td>Completed items on this paint job</td><td>After pieces are painted — then Stop when the job is done</td></tr>
+    </tbody>
+  </table>
+
+  <h2 style="margin-top:16px">4) Where the piece goes</h2>
+  <table>
+    <thead>
+      <tr><th>Action</th><th>Result</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Carpentry sends Floor 2 WIP or a quote line (full or partial)</td><td>Job appears on Painting Orders with that qty</td></tr>
+      <tr><td>Save completed items (✓)</td><td>Progress stored on the job (for example 2 of 3 painted)</td></tr>
+      <tr><td>Stop → Delivery queue</td><td>Virtual hold in the Delivery app with the same customer when it is a quote job</td></tr>
+      <tr><td>Stop → Floor 1 storage</td><td>Finished stock credited on Warehouse Floor 1</td></tr>
+      <tr><td>Complete a painting repair</td><td>Delivery app Repairs queue — floors not increased</td></tr>
+    </tbody>
+  </table>
+
+  <div class="note">
+    <b>Access:</b> If you see “Access denied”, the user is not enabled on the web portal → User Access → Production → Painting. After saving, tap Check access in the app.
+  </div>
+  <p class="footer">Keep this guide next to workshop phones. It matches the current Painting app screens.</p>
+</section>
+
+</body>
+</html>

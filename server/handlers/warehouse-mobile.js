@@ -1881,6 +1881,23 @@ async function opPaintingJobResume(body, user) {
   return resumePaintingProductionJob(sb, { jobId, userId: user?.id || user?.uid });
 }
 
+async function opPaintingJobCheckUnit(body, user) {
+  await assertPaintingWorkshopUser(user);
+  const jobId = String(body.job_id || body.jobId || '').trim();
+  if (!jobId) throw new Error('job_id required');
+  const sb = createFirestoreServerClient();
+  const completedRaw = body.completed_count ?? body.completedCount;
+  if (completedRaw == null || completedRaw === '') {
+    throw new Error('completed_count required');
+  }
+  const { setPaintingProductionJobUnitsCompleted } = await import('../lib/paintingProductionJobs.js');
+  return setPaintingProductionJobUnitsCompleted(sb, {
+    jobId,
+    completedCount: completedRaw,
+    userId: user?.id || user?.uid,
+  });
+}
+
 async function opPaintingJobFinish(body, user) {
   await assertPaintingWorkshopUser(user);
   const jobId = String(body.job_id || body.jobId || '').trim();
@@ -3496,13 +3513,24 @@ function warehouseDeliveryWhatsAppRoute(session) {
       ].filter(Boolean),
     };
   }
-  if (dk === 'order_delivery') {
+  if (dk === 'order_delivery' || dk === 'showroom_delivery') {
     return {
-      title: 'Order delivery',
+      title: dk === 'showroom_delivery' ? 'Showroom delivery' : 'Customer delivery',
       fromName: 'Warehouse',
-      toName: customerName || 'Customer',
+      toName: customerName || (dk === 'showroom_delivery' ? 'Showroom' : 'Customer'),
       extraLines: [
         meta.quote_number ? `Order: ${meta.quote_number}` : '',
+        meta.partial_delivery ? 'Partial delivery' : '',
+        String(meta.driver_name || '').trim() ? `Driver: ${meta.driver_name}` : '',
+      ].filter(Boolean),
+    };
+  }
+  if (dk === 'farm_delivery' || dk === 'farm_return') {
+    return {
+      title: 'Farm delivery',
+      fromName: 'Warehouse',
+      toName: 'Farm',
+      extraLines: [
         String(meta.driver_name || '').trim() ? `Driver: ${meta.driver_name}` : '',
       ].filter(Boolean),
     };
@@ -4209,12 +4237,13 @@ async function opDeliverySubmit(body, user, { skipAccessCheck = false } = {}) {
             production_job_id: orderStaging?.production_job_id || null,
             quote_id: orderStaging?.quote_id || null,
             quote_number: orderStaging?.quote_number || null,
-            customer_name: orderStaging?.customer_name || null,
-            customer_phone: orderStaging?.customer_phone || null,
-            showroom_order: orderStaging?.showroom_order === true,
-            customer_order: !orderStaging?.showroom_order
+            customer_name: orderStaging?.customer_name || group.customer_name || null,
+            customer_phone: orderStaging?.customer_phone || group.customer_phone || null,
+            showroom_order: orderStaging?.showroom_order === true || group.showroom_order === true,
+            customer_order: !(orderStaging?.showroom_order === true || group.showroom_order === true)
               && (orderStaging?.customer_order === true
-                || Boolean(String(orderStaging?.customer_name || '').trim())),
+                || Boolean(String(orderStaging?.customer_name || group.customer_name || '').trim())),
+            partial_quote_hold_id: group.partial_quote_hold_id || group.partialQuoteHoldId || null,
           } : {}),
         }),
       });
@@ -4305,23 +4334,29 @@ async function opDeliverySubmit(body, user, { skipAccessCheck = false } = {}) {
       && !e?.metadata?.return_order_id
       && (e.metadata?.production_job_id || e.metadata?.quote_id),
   );
-  const orderHasCustomer = Boolean(String(orderEntry?.metadata?.customer_name || '').trim());
+  const orderHasCustomer = Boolean(String(orderEntry?.metadata?.customer_name || body.customer_name || '').trim());
+  const orderIsShowroom = orderEntry?.metadata?.showroom_order === true
+    || clientDocumentKind === 'showroom_delivery';
   const orderSessionMeta = orderEntry
     ? {
-      document_kind: 'order_delivery',
+      document_kind: orderIsShowroom ? 'showroom_delivery' : 'order_delivery',
       production_job_id: orderEntry.metadata?.production_job_id || null,
       quote_id: orderEntry.metadata?.quote_id || null,
       quote_number: orderEntry.metadata?.quote_number || null,
-      customer_name: orderEntry.metadata?.customer_name || null,
-      customer_phone: orderEntry.metadata?.customer_phone || null,
-      ...(orderEntry?.metadata?.showroom_order === true
+      customer_name: orderEntry.metadata?.customer_name || body.customer_name || null,
+      customer_phone: orderEntry.metadata?.customer_phone || body.customer_phone || null,
+      partial_delivery: Boolean(orderEntry.metadata?.partial_quote_hold_id),
+      ...(orderIsShowroom
         ? { showroom_order: true, customer_order: false }
         : (orderHasCustomer ? { customer_order: true } : {})),
     }
-    : (clientDocumentKind === 'order_delivery' ? { document_kind: 'order_delivery' } : {});
+    : (clientDocumentKind === 'showroom_delivery' || clientDocumentKind === 'order_delivery'
+      ? { document_kind: clientDocumentKind }
+      : {});
 
   let clientPrintGroups = sanitizeDeliveryNotePrintGroups(body.print_groups || body.printGroups);
-  if (String(orderSessionMeta.document_kind || clientDocumentKind) === 'order_delivery') {
+  const orderKind = String(orderSessionMeta.document_kind || clientDocumentKind || '').toLowerCase();
+  if ((orderKind === 'order_delivery' || orderKind === 'showroom_delivery') && !clientPrintGroups.length) {
     try {
       const quoteLines = await loadQuoteLinesForDeliveryNote(sb, {
         quoteId: orderSessionMeta.quote_id || groups?.[0]?.quote_id,
@@ -4349,7 +4384,15 @@ async function opDeliverySubmit(body, user, { skipAccessCheck = false } = {}) {
       ...(isFarmDelivery ? {} : orderSessionMeta),
       ...(clientPrintGroups.length ? { print_groups: clientPrintGroups } : {}),
       source: mobileSource,
-      document_kind: isFarmDelivery ? 'farm_delivery' : (session.metadata?.document_kind || undefined),
+      document_kind: isFarmDelivery
+        ? 'farm_delivery'
+        : (repairSessionMeta.document_kind
+          || orderSessionMeta.document_kind
+          || clientDocumentKind
+          || session.metadata?.document_kind
+          || 'delivery'),
+      ...(String(body.customer_name || '').trim() ? { customer_name: String(body.customer_name).trim() } : {}),
+      ...(String(body.customer_phone || '').trim() ? { customer_phone: String(body.customer_phone).trim() } : {}),
       hassan_alert_pending: isFarmDelivery ? false : true,
       ...(isFarmDelivery ? {} : { hassan_alert_at: now }),
       submitted_by_email: user?.email || null,
@@ -4448,7 +4491,8 @@ function mobileSentDeliverySessionEligible(session) {
   const src = String(meta.source || '');
   if (WAREHOUSE_MOBILE_DELIVERY_SOURCES.has(src)) return true;
   const dk = String(meta.document_kind || '').toLowerCase();
-  if (dk === 'repair_delivery' || dk === 'order_delivery' || dk === 'sold_delivery') return true;
+  if (dk === 'repair_delivery' || dk === 'order_delivery' || dk === 'showroom_delivery'
+    || dk === 'sold_delivery' || dk === 'farm_delivery' || dk === 'farm_return') return true;
   if (meta.return_order_id || meta.return_number) return true;
   if (meta.production_job_id || meta.quote_id || meta.quote_number) return true;
   if (meta.storage_send_id || meta.storage_number) return true;
@@ -4735,6 +4779,7 @@ async function opDeliverySentDetail(body, user) {
       driver_signature_url: signatureUrl,
       customer_name: String(meta.customer_name || routingMeta.customer_name || '').trim(),
       customer_phone: String(meta.customer_phone || routingMeta.customer_phone || '').trim(),
+      partial_delivery: meta.partial_delivery === true,
     },
     print_groups: printGroups,
     customer_sent_lines: customerSentLines,
@@ -5634,6 +5679,9 @@ export default async function handler(req, res) {
         break;
       case 'painting-job-resume':
         result = await opPaintingJobResume(body, user);
+        break;
+      case 'painting-job-check-unit':
+        result = await opPaintingJobCheckUnit(body, user);
         break;
       case 'painting-job-finish':
         result = await opPaintingJobFinish(body, user);

@@ -43,7 +43,6 @@ import {
   storeroomDeductionStrings,
 } from '../productionKiosk/shared/lib/storeroomDeductionFlow';
 import ProductionJobMaterialsModal from '../productionKiosk/components/ProductionJobMaterialsModal';
-import { QuoteProductionOrderBadges } from '../shared/quoteProductionOrderUi';
 import { QuoteProductionDispositionModal, QuoteProductionWorkshopLineRows } from '../productionKiosk/shared/quoteProductionPartialUi';
 import { theme } from '../shared/theme';
 import RunningJobElapsed from '../productionKiosk/components/RunningJobElapsed';
@@ -65,6 +64,8 @@ import {
 } from '../shared/lib/repairReturnQueueUi';
 import WorkshopRepairInboxCard from '../shared/components/WorkshopRepairInboxCard';
 import { WorkshopJobInboxBadges } from '../shared/components/WorkshopInboxKindBadges';
+import { QuoteProductionOrderBadges } from '../shared/quoteProductionOrderUi';
+import { alertQuoteFloor2QtyCappedIfNeeded } from '../shared/quoteFloor2QtyCapAlert';
 import { repairSearchBlob } from '../shared/lib/productionInboxKinds';
 import RunningRepairElapsed from '../productionKiosk/components/RunningRepairElapsed';
 
@@ -157,6 +158,34 @@ function QuoteOrderJobCard({
           allowPaintingHandoff
           allowFloor1Handoff
           allowDeliveryHandoff={false}
+          useCompletedQtyStepper
+          onSetCompleted={async (line, count) => {
+            const completed = Math.max(0, Number(line.production_completed_qty) || 0);
+            const next = Math.max(0, Math.floor(Number(count) || 0));
+            if (next === completed) return 0;
+            if (next < completed) {
+              Alert.alert(
+                tUi('upholsteryCompletedItemsLabel', locale),
+                tUi('quoteLineCompletedOnlyIncrease', locale),
+              );
+              return 0;
+            }
+            const add = next - completed;
+            try {
+              const markResult = await markCarpentryQuoteLineReady(
+                quote.quote_id,
+                line.id,
+                add,
+                { productionLineSet: quote.production_line_set },
+              );
+              alertQuoteFloor2QtyCappedIfNeeded(markResult, { tUi, locale });
+              onQuoteLinesChanged?.();
+              return Math.max(0, Math.floor(Number(markResult?.ready_qty ?? add) || 0));
+            } catch (err) {
+              Alert.alert(tUi('quoteOrderFailed', locale), err?.message || String(err));
+              return 0;
+            }
+          }}
           onMarkReady={(line, qty) => markCarpentryQuoteLineReady(
             quote.quote_id,
             line.id,

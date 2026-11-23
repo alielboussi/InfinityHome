@@ -369,6 +369,48 @@ export default function QuoteDetailScreen({ route, navigation }) {
           allowPaintingHandoff
           allowFloor1Handoff
           allowDeliveryHandoff={false}
+          useCompletedQtyStepper
+          onSetCompleted={async (line, count) => {
+            const completed = Math.max(0, Number(line.production_completed_qty) || 0);
+            const next = Math.max(0, Math.floor(Number(count) || 0));
+            if (next === completed) return 0;
+            if (next < completed) {
+              Alert.alert(
+                tUi('upholsteryCompletedItemsLabel', locale),
+                tUi('quoteLineCompletedOnlyIncrease', locale),
+              );
+              return 0;
+            }
+            const add = next - completed;
+            try {
+              const markResult = await markCarpentryQuoteLineReady(quoteId, line.id, add, { productionLineSet });
+              alertQuoteFloor2QtyCappedIfNeeded(markResult, { tUi, locale });
+              const ready = Math.max(0, Math.floor(Number(markResult?.ready_qty ?? add) || 0));
+              if (ready > 0) {
+                setQuote((prev) => {
+                  const nextLines = (Array.isArray(prev.lines) ? prev.lines : []).map((row) => {
+                    if (String(row.id) !== String(line.id)) return row;
+                    const ordered = Math.max(
+                      Number(row.ordered_qty) || Number(row.quantity) || 1,
+                      1,
+                    );
+                    const done = Math.max(Number(row.production_completed_qty) || 0, 0) + ready;
+                    return {
+                      ...row,
+                      production_completed_qty: done,
+                      production_remaining_qty: Math.max(0, ordered - done),
+                    };
+                  });
+                  return { ...prev, lines: nextLines };
+                });
+                void reloadQuote({ quiet: true });
+              }
+              return ready;
+            } catch (err) {
+              Alert.alert(tUi('quoteOrderFailed', locale), err?.message || String(err));
+              return 0;
+            }
+          }}
           onMarkReady={async (line, qty) => {
             const markResult = await markCarpentryQuoteLineReady(quoteId, line.id, qty, { productionLineSet });
             alertQuoteFloor2QtyCappedIfNeeded(markResult, { tUi, locale });

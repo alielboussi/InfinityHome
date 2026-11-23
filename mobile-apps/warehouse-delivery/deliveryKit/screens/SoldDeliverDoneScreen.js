@@ -54,7 +54,7 @@ export default function SoldDeliverDoneScreen({ route, navigation }) {
         documentKind="sold_delivery"
         customerName={customerName}
         customerPhone={customerPhone}
-        autoPrintOnOpen
+        autoPrintOnOpen={false}
         onDone={() => setPrintOpen(false)}
       />
     </>

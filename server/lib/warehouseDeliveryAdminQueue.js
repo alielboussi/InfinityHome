@@ -343,20 +343,33 @@ async function listPartialQuoteDeliveryHolds(sb) {
       if (hold.collected_at) continue;
       const asmId = String(hold.assembly_id || '').trim();
       if (!asmId) continue;
+      const qty = Math.max(1, Number(hold.quantity) || 1);
+      const ordered = Math.max(qty, Number(hold.ordered_qty) || 0);
+      const lineName = String(hold.line_name || 'Order').trim();
+      const assemblyName = ordered > qty
+        ? `${lineName} (partial ${qty} of ${ordered})`
+        : `${lineName} × ${qty}`;
       out.push({
         quote_id: String(row.quote_id),
         assembly_id: asmId,
-        assembly_name: `${hold.line_name || 'Order'} × ${hold.quantity || 1}`,
-        quantity: Math.max(1, Number(hold.quantity) || 1),
+        assembly_name: assemblyName,
+        quantity: qty,
         quote_number: hold.quote_number || meta.quote_number || null,
-        customer_name: metaName,
-        customer_phone: metaPhone,
-        showroom_order,
-        customer_order,
+        customer_name: String(hold.customer_name || '').trim() || metaName,
+        customer_phone: String(hold.customer_phone || '').trim() || metaPhone,
+        showroom_order: hold.showroom_order === true || showroom_order,
+        customer_order: !(hold.showroom_order === true || showroom_order)
+          && (customer_order || Boolean(String(hold.customer_name || metaName || '').trim())),
         department: hold.department || row.route || 'upholstery',
-        lines: [{ id: hold.item_id, name: hold.line_name, quantity: hold.quantity }],
+        lines: [{
+          id: hold.item_id,
+          name: assemblyName,
+          quantity: qty,
+          ordered_qty: ordered,
+        }],
         delivery_admin_stage: DELIVERY_ADMIN_STAGE.AWAITING_DRIVER,
         partial_quote_hold_id: hold.id,
+        partial: true,
       });
     }
   }
@@ -570,10 +583,29 @@ export async function advanceAdminQueueOnDeliverySubmit(sb, entries, {
     }
 
     if (quoteId) {
+      const holdId = String(line.metadata?.partial_quote_hold_id || '').trim();
       const { data: routing } = await sb.from(QUOTE_ROUTING).select('metadata').eq('quote_id', quoteId).maybeSingle();
       if (routing) {
+        const prev = routing.metadata && typeof routing.metadata === 'object' ? routing.metadata : {};
+        let nextMeta = prev;
+        if (holdId && Array.isArray(prev.partial_delivery_holds)) {
+          nextMeta = {
+            ...prev,
+            partial_delivery_holds: prev.partial_delivery_holds.map((hold) => (
+              String(hold?.id) === holdId
+                ? {
+                  ...hold,
+                  collected_at: submittedAt,
+                  stage: DELIVERY_ADMIN_STAGE.COLLECTED_BY_DRIVER,
+                }
+                : hold
+            )),
+          };
+        } else {
+          nextMeta = patchCollected(prev);
+        }
         await sb.from(QUOTE_ROUTING).update({
-          metadata: patchCollected(routing.metadata),
+          metadata: nextMeta,
           updated_at: submittedAt,
         }).eq('quote_id', quoteId);
       }

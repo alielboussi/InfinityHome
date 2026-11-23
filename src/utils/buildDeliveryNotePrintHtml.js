@@ -170,7 +170,7 @@ function safeImgSrc(value) {
   return String(value ?? '').trim().replace(/"/g, '&quot;');
 }
 
-function deliveryNoteTitle(documentKind = 'delivery') {
+export function deliveryNoteTitle(documentKind = 'delivery') {
   const kind = String(documentKind || 'delivery').trim();
   if (kind === 'return' || kind === 'return_shipment') return 'Return Note';
   if (kind === 'return_customer_delivery') return 'Return Delivery Note';
@@ -184,7 +184,7 @@ function deliveryNoteTitle(documentKind = 'delivery') {
   return 'Delivery Note';
 }
 
-function deliveryNoteNumberLabel(documentKind = 'delivery') {
+export function deliveryNoteNumberLabel(documentKind = 'delivery') {
   const kind = String(documentKind || 'delivery').trim();
   if (kind === 'return' || kind === 'return_shipment') return 'Return No.';
   if (kind === 'return_customer_delivery') return 'Return Delivery No.';
@@ -196,12 +196,25 @@ function deliveryNoteNumberLabel(documentKind = 'delivery') {
   return 'Delivery No.';
 }
 
+export function deliveryNoteTypeLabel(documentKind = 'delivery') {
+  const kind = String(documentKind || '').trim();
+  if (kind === 'farm_delivery' || kind === 'farm_return') return 'Farm';
+  if (kind === 'repair_delivery'
+    || kind === 'return'
+    || kind === 'return_shipment'
+    || kind === 'return_customer_delivery') return 'Repair';
+  if (kind === 'showroom_delivery') return 'Showroom';
+  if (kind === 'order_delivery' || kind === 'sold_delivery') return 'Customer';
+  return 'Warehouse';
+}
+
 function deliveryNoteShowsCustomerBlock(documentKind = 'delivery') {
   const kind = String(documentKind || '').trim();
   return kind === 'sold_delivery'
     || kind === 'return_customer_delivery'
     || kind === 'repair_delivery'
-    || kind === 'order_delivery';
+    || kind === 'order_delivery'
+    || kind === 'showroom_delivery';
 }
 
 export function formatDeliveryNoteDriverLabel(name, phone) {
@@ -211,7 +224,7 @@ export function formatDeliveryNoteDriverLabel(name, phone) {
   return n || p || '';
 }
 
-function renderPageHeader(deliveryNumber, dateStr, timeStr, companyLogoSrc, documentKind = 'delivery', customerName = '', customerPhone = '', dispatchedBy = '') {
+function renderPageHeader(deliveryNumber, dateStr, timeStr, companyLogoSrc, documentKind = 'delivery', customerName = '', customerPhone = '', dispatchedBy = '', partialDelivery = false) {
   const logoSrc = String(companyLogoSrc || '').trim();
   const logoImg = logoSrc
     ? `<img class="company-logo" src="${safeImgSrc(logoSrc)}" alt="${escapeHtml(DELIVERY_NOTE_COMPANY_NAME)}" />`
@@ -221,6 +234,8 @@ function renderPageHeader(deliveryNumber, dateStr, timeStr, companyLogoSrc, docu
     : `<p class="company-name">${escapeHtml(DELIVERY_NOTE_COMPANY_NAME)}</p>`;
   const title = deliveryNoteTitle(documentKind);
   const numLabel = deliveryNoteNumberLabel(documentKind);
+  const typeLabel = deliveryNoteTypeLabel(documentKind);
+  const typeLine = `<p class="doc-type"><strong>Type:</strong> ${escapeHtml(typeLabel)}${partialDelivery ? ' · Partial delivery' : ''}</p>`;
   const custName = String(customerName || '').trim();
   const custPhone = String(customerPhone || '').trim();
   const showCustomer = deliveryNoteShowsCustomerBlock(documentKind);
@@ -243,6 +258,7 @@ function renderPageHeader(deliveryNumber, dateStr, timeStr, companyLogoSrc, docu
         <div class="header-brand">${logoImg}</div>
         <div class="header-main">
           <h1 class="title">${escapeHtml(title)}</h1>
+          ${typeLine}
           ${companyNameLine}
           <p class="delivery-num-label">${escapeHtml(numLabel)}</p>
           <p class="delivery-num">${escapeHtml(deliveryNumber)}</p>
@@ -325,6 +341,7 @@ function renderPage(opts) {
     customerName = '',
     customerPhone = '',
     dispatchedBy = '',
+    partialDelivery = false,
   } = opts;
   const bodyRows = blocks.map((b) => renderBlockRows(b, { showElapsedColumn })).join('');
   const colSpan = showElapsedColumn ? 3 : 2;
@@ -333,7 +350,7 @@ function renderPage(opts) {
   return `
     <section class="page">
       <div class="page-inner">
-        ${renderPageHeader(deliveryNumber, dateStr, timeStr, companyLogoSrc, documentKind, customerName, customerPhone, dispatchedBy)}
+        ${renderPageHeader(deliveryNumber, dateStr, timeStr, companyLogoSrc, documentKind, customerName, customerPhone, dispatchedBy, partialDelivery)}
         <div class="cart-table-wrap">
         ${renderCartTableHead(showElapsedColumn)}
           ${bodyRows || emptyRow}
@@ -365,6 +382,7 @@ export function buildDeliveryNotePrintHtml({
   customerName = '',
   customerPhone = '',
   dispatchedBy = '',
+  partialDelivery = false,
 }) {
   const at = submittedAt || new Date().toISOString();
   const dateStr = formatCatDate(at);
@@ -392,6 +410,7 @@ export function buildDeliveryNotePrintHtml({
         customerName,
         customerPhone,
         dispatchedBy,
+        partialDelivery: Boolean(partialDelivery),
       }))
     .join('');
 
@@ -480,6 +499,12 @@ export function buildDeliveryNotePrintHtml({
       font-weight: 800;
       letter-spacing: 0.04em;
       text-transform: uppercase;
+    }
+    .doc-type {
+      margin: 0 0 2mm;
+      font-size: 11pt;
+      font-weight: 700;
+      color: #111;
     }
     .company-name {
       margin: 0 0 3mm;

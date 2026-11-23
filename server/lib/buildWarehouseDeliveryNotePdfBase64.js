@@ -1,6 +1,11 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { DELIVERY_NOTE_DISCLAIMER } from '../../src/utils/buildDeliveryNotePrintHtml.js';
+import {
+  DELIVERY_NOTE_DISCLAIMER,
+  deliveryNoteTitle,
+  deliveryNoteNumberLabel,
+  deliveryNoteTypeLabel,
+} from '../../src/utils/buildDeliveryNotePrintHtml.js';
 import { DELIVERY_NOTE_LOGO_DATA_URI } from '../../src/utils/deliveryNoteCompanyLogoEmbedded.js';
 import {
   buildDeliveryPrintGroupsFromEntries,
@@ -64,26 +69,6 @@ function logoFormatFromDataUri(dataUri) {
 /**
  * A4 delivery note PDF (Node) for WhatsApp — same line data as the print HTML note.
  */
-function pdfNoteTitle(documentKind) {
-  const kind = String(documentKind || 'delivery').trim();
-  if (kind === 'return_shipment') return 'Return Note';
-  if (kind === 'return_customer_delivery') return 'Return Delivery Note';
-  if (kind === 'repair_delivery') return 'Repair Delivery Note';
-  if (kind === 'sold_delivery') return 'Sold Delivery Note';
-  if (kind === 'order_delivery') return 'Customer Order Delivery Note';
-  return 'Delivery Note';
-}
-
-function pdfNoteNumberLabel(documentKind) {
-  const kind = String(documentKind || 'delivery').trim();
-  if (kind === 'return_shipment') return 'Return No.';
-  if (kind === 'return_customer_delivery') return 'Return Delivery No.';
-  if (kind === 'repair_delivery') return 'Repair Delivery No.';
-  if (kind === 'sold_delivery') return 'Sold Delivery No.';
-  if (kind === 'order_delivery') return 'Customer Order No.';
-  return 'Delivery #';
-}
-
 export function buildWarehouseDeliveryNotePdfBase64({
   session,
   entries,
@@ -111,7 +96,7 @@ export function buildWarehouseDeliveryNotePdfBase64({
   const quoteNo = String(meta.quote_number || '').trim();
   const dn = kind === 'repair_delivery'
     ? String(meta.return_number || session?.delivery_number || session?.id || '').trim() || 'Delivery'
-    : (kind === 'order_delivery' && quoteNo
+    : ((kind === 'order_delivery' || kind === 'showroom_delivery') && quoteNo
       ? quoteNo
       : String(session?.delivery_number || session?.id || '').trim() || 'Delivery');
   const at = submittedAtOverride || session?.submitted_at || session?.created_at || new Date().toISOString();
@@ -126,6 +111,7 @@ export function buildWarehouseDeliveryNotePdfBase64({
     kind === 'return_customer_delivery'
     || kind === 'repair_delivery'
     || kind === 'order_delivery'
+    || kind === 'showroom_delivery'
     || kind === 'sold_delivery'
   );
 
@@ -148,14 +134,18 @@ export function buildWarehouseDeliveryNotePdfBase64({
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(16);
-    doc.text(pdfNoteTitle(kind), pageW / 2, y + 6, { align: 'center' });
+    doc.text(deliveryNoteTitle(kind), pageW / 2, y + 6, { align: 'center' });
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
     doc.text('Bestrest Furniture', pageW / 2, y + 12, { align: 'center' });
-    y += 22;
+    y += 18;
+    const typeBits = [deliveryNoteTypeLabel(kind)];
+    if (meta.partial_delivery === true) typeBits.push('Partial delivery');
+    doc.text(`Type: ${typeBits.join(' · ')}`, pageW / 2, y, { align: 'center' });
+    y += 10;
 
     doc.setFontSize(10);
-    doc.text(`${pdfNoteNumberLabel(kind)} ${dn}`, margin, y);
+    doc.text(`${deliveryNoteNumberLabel(kind)} ${dn}`, margin, y);
     y += 5;
     doc.text(`Date: ${formatZambiaDate(at)}    Time: ${formatZambiaTime(at)}`, margin, y);
     y += 5;

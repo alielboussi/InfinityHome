@@ -25,6 +25,7 @@ import {
   finishPaintingProductionJob,
   pausePaintingProductionJob,
   resumePaintingProductionJob,
+  setPaintingProductionJobUnitsCompleted,
 } from '../services/paintingApi';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 import ProductionJobMaterialsModal from '../components/ProductionJobMaterialsModal';
@@ -42,8 +43,10 @@ import {
   mergeJobInList,
   optimisticPauseJobPatch,
   optimisticResumeJobPatch,
+  optimisticSetUnitsCompletedPatch,
   serverJobPatchFromResponse,
 } from '../shared/lib/productionJobTimerOptimistic';
+import JobCompletedUnitsRow from '../shared/components/JobCompletedUnitsRow';
 import { alertProductionFinishDisposition } from '../shared/lib/productionFinishDispositionAlert';
 import ConfirmTypeOkModal from '../shared/components/ConfirmTypeOkModal';
 
@@ -59,11 +62,29 @@ function resolvePaintingJobImage(job) {
   return raw ? resolveProductImageUrl(raw) : '';
 }
 
-function JobCard({ job, locale, textAlign, busy, timerLocked, onPause, onPlay, onFinish, onMaterials }) {
+function JobCard({
+  job,
+  locale,
+  textAlign,
+  busy,
+  timerLocked,
+  unitBusy,
+  onPause,
+  onPlay,
+  onFinish,
+  onMaterials,
+  onSetUnitsCompleted,
+}) {
   const isRunning = job.status === 'running';
   const canPlay = job.status === 'ready' || job.status === 'paused';
   const isCompleted = job.status === 'completed';
   const qty = Math.max(1, Math.floor(Number(job.product_qty) || 1));
+  const savedCount = useMemo(() => {
+    const raw = job.checked_unit_indexes || [];
+    const arr = (Array.isArray(raw) ? raw : []).map((n) => Math.floor(Number(n))).filter((n) => n >= 1);
+    return arr.length;
+  }, [job.checked_unit_indexes]);
+  const jobId = String(job.job_id || job.id);
   const fromQuote = Boolean(String(job.carpentry_quote_id || job.metadata?.carpentry_quote_id || '').trim());
   const invSource = String(job.inventory_source || '').trim().toLowerCase();
   let sourceKey = 'paintingQueueBadgeFloor2';
@@ -115,6 +136,19 @@ function JobCard({ job, locale, textAlign, busy, timerLocked, onPause, onPlay, o
             : tUi(`upholsteryJobStatus_${job.status}`, locale)}
         </Text>
       </View>
+
+      {!isCompleted ? (
+        <JobCompletedUnitsRow
+          rowKey={jobId}
+          productQty={qty}
+          savedCount={savedCount}
+          locale={locale}
+          textAlign={textAlign}
+          disabled={Boolean(unitBusy || busy)}
+          tUi={tUi}
+          onApply={onSetUnitsCompleted}
+        />
+      ) : null}
 
       <View style={styles.iconRow}>
         {canPlay ? (
@@ -203,6 +237,7 @@ export default function JobsScreen({ navigation, route, allowed, accessHint, onR
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState('');
   const [timerBusyId, setTimerBusyId] = useState('');
+  const [unitBusyId, setUnitBusyId] = useState('');
   const timerOpsRef = useRef(new Set());
   const jobsSnapshotRef = useRef([]);
   const [materialsJob, setMaterialsJob] = useState(null);
@@ -298,6 +333,33 @@ export default function JobsScreen({ navigation, route, allowed, accessHint, onR
   const onPause = (jobId) => {
     void runOptimisticTimerOp(jobId, 'pause');
   };
+
+  const onSetUnitsCompleted = useCallback(async (jobId, completedCount) => {
+    const id = String(jobId || '').trim();
+    if (!id) return;
+    let snapshot = null;
+    setJobs((prev) => {
+      const job = prev.find((j) => String(j.job_id || j.id) === id);
+      if (!job) return prev;
+      snapshot = prev;
+      const patch = optimisticSetUnitsCompletedPatch(job, completedCount);
+      if (!patch) return prev;
+      return mergeJobInList(prev, id, patch);
+    });
+    setUnitBusyId(id);
+    try {
+      const result = await setPaintingProductionJobUnitsCompleted(id, completedCount);
+      const patch = serverJobPatchFromResponse(result);
+      if (patch) {
+        setJobs((prev) => mergeJobInList(prev, id, patch));
+      }
+    } catch (e) {
+      if (snapshot) setJobs(snapshot);
+      Alert.alert(tUi('manufactureFailed', locale), e?.message || '');
+    } finally {
+      setUnitBusyId('');
+    }
+  }, [locale]);
 
   const completePaintingFinish = (jobId, destination) => {
     wrapJobBusy(jobId, async () => {
@@ -452,10 +514,12 @@ export default function JobsScreen({ navigation, route, allowed, accessHint, onR
               textAlign={textAlign}
               busy={busyId === `job:${jobRow.job_id || jobRow.id}`}
               timerLocked={timerBusyId === String(jobRow.job_id || jobRow.id)}
+              unitBusy={unitBusyId === String(jobRow.job_id || jobRow.id)}
               onPlay={onPlay}
               onPause={onPause}
               onFinish={onFinish}
               onMaterials={(job) => setMaterialsJob(job)}
+              onSetUnitsCompleted={onSetUnitsCompleted}
             />
           );
         }}

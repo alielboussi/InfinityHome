@@ -1,3 +1,5 @@
+import { useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,6 +9,7 @@ import { kioskFooterBottomPad } from '../deliveryKit/lib/kioskLayout';
 import { useProductionDashboardTileLayout } from '../deliveryKit/lib/productionDashLayout';
 import { useProductionKioskLocale } from '../deliveryKit/hooks/useProductionKioskLocale';
 import { tUi } from '../deliveryKit/lib/productionKioskI18n';
+import { openDeliveryNotePdf } from '../deliveryKit/lib/openDeliveryNotePdf';
 import {
   isWorkshopOrDeliveryScreenAllowed,
 } from '../shared/mobileAccessManifest';
@@ -55,6 +58,7 @@ function DashboardTile({
 
 export default function DashboardScreen({
   navigation,
+  route,
   grant,
   userDisplayName,
   userEmail,
@@ -66,6 +70,19 @@ export default function DashboardScreen({
   const insets = useSafeAreaInsets();
   const { locale, toggleLocale, ready } = useProductionKioskLocale();
   const { counts, clearBadge } = useDashboardNotificationBadges();
+
+  useFocusEffect(useCallback(() => {
+    const pending = route?.params?.pendingDeliveryNote;
+    if (!pending || typeof pending !== 'object' || !String(pending.deliveryNumber || '').trim()) {
+      return undefined;
+    }
+    const payload = { ...pending };
+    navigation.setParams({ pendingDeliveryNote: undefined });
+    const timer = setTimeout(() => {
+      void openDeliveryNotePdf({ copies: 1, ...payload }).catch(() => {});
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [navigation, route?.params?.pendingDeliveryNote]));
 
   const allTiles = [
     {

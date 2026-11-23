@@ -25,6 +25,7 @@ export async function openDeliveryNotePdf({
   customerName = '',
   customerPhone = '',
   forceShare = false,
+  partialDelivery = false,
 }) {
   const companyLogoSrc = await getDeliveryNoteCompanyLogoDataUri().catch(() => '');
   const signatureSrc = await resolveDeliveryDriverSignatureDataUri({
@@ -44,6 +45,7 @@ export async function openDeliveryNotePdf({
     documentKind,
     customerName,
     customerPhone,
+    partialDelivery: Boolean(partialDelivery),
   });
   if (Platform.OS === 'web') {
     openDeliveryNoteHtmlInBrowser(html, deliveryNumber || 'Delivery note');

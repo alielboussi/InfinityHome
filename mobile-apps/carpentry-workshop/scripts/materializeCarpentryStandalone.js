@@ -350,6 +350,15 @@ function main() {
   copyDir(path.join(upholsteryRoot, 'screens'), screensDest, {
     fileFilter: (name) => KIOSK_SCREENS.has(name) && name !== 'ManufactureScreen.js',
   });
+  const createScreenDest = path.join(screensDest, 'CreateScreen.js');
+  if (fs.existsSync(createScreenDest)) {
+    let createSrc = fs.readFileSync(createScreenDest, 'utf8');
+    createSrc = createSrc.replace(
+      "from '../components/KioskStickyFooter'",
+      "from '../../components/KioskStickyFooter'",
+    );
+    safeWriteFileSync(createScreenDest, createSrc);
+  }
   const carpentryApiSrc = path.join(appRoot, 'services', 'carpentryApi.js');
   const carpentryApiDest = path.join(kioskPath, 'services', 'carpentryApi.js');
   if (fs.existsSync(carpentryApiSrc)) {
@@ -377,6 +386,7 @@ function main() {
   }
 
   materializeAppRootKioskUi();
+  applyCarpentryLocaleRuntime();
 
   safeWriteFileSync(
     path.join(kioskPath, '.standalone-materialized'),
@@ -384,6 +394,129 @@ function main() {
   );
 
   console.log('[materializeCarpentryStandalone] ok');
+}
+
+/** Upholstery copy has no locale broadcast; AuthGate crashed on undefined subscribe/useCallback. */
+function applyCarpentryLocaleRuntime() {
+  const localeJs = `import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const STORAGE_KEY = 'warehouse-production-locale:v1';
+const listeners = new Set();
+
+function normalizeLocale(value) {
+  return value === 'en' ? 'en' : 'ar';
+}
+
+export function subscribeProductionKioskLocale(handler) {
+  if (typeof handler !== 'function') return () => {};
+  listeners.add(handler);
+  return () => listeners.delete(handler);
+}
+
+function emitLocale(locale) {
+  listeners.forEach((fn) => {
+    try {
+      fn(locale);
+    } catch {
+      /* ignore subscriber errors */
+    }
+  });
+}
+
+export async function readProductionKioskLocale() {
+  try {
+    const v = await AsyncStorage.getItem(STORAGE_KEY);
+    if (v === 'en' || v === 'ar') return v;
+  } catch {
+    /* ignore */
+  }
+  return 'ar';
+}
+
+export async function writeProductionKioskLocale(locale) {
+  const v = normalizeLocale(locale);
+  try {
+    await AsyncStorage.setItem(STORAGE_KEY, v);
+  } catch {
+    /* ignore */
+  }
+  emitLocale(v);
+  return v;
+}
+`;
+
+  const hookJs = `// @refresh reset
+import { useEffect, useState } from 'react';
+import * as AsyncStorageModule from '@react-native-async-storage/async-storage';
+import { kioskTextAlign } from '../lib/kioskLayout';
+
+const STORAGE_KEY = 'warehouse-production-locale:v1';
+
+function localeStorage() {
+  const mod = AsyncStorageModule;
+  return mod?.default ?? mod?.AsyncStorage ?? mod;
+}
+
+export function useProductionKioskLocale(options = {}) {
+  const forceArabic = options?.forceArabic === true;
+  const [locale, setLocaleState] = useState('ar');
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const store = localeStorage();
+    const getItem = typeof store?.getItem === 'function' ? store.getItem.bind(store) : null;
+    if (!getItem) {
+      setReady(true);
+      return undefined;
+    }
+    getItem(STORAGE_KEY)
+      .then((v) => {
+        if (v === 'en' || v === 'ar') setLocaleState(v);
+      })
+      .catch(() => {})
+      .finally(() => setReady(true));
+    return undefined;
+  }, []);
+
+  const setLocale = (next) => {
+    const v = next === 'en' ? 'en' : 'ar';
+    setLocaleState(v);
+    const store = localeStorage();
+    if (typeof store?.setItem === 'function') {
+      store.setItem(STORAGE_KEY, v).catch(() => {});
+    }
+  };
+
+  const toggleLocale = () => {
+    setLocale(locale === 'ar' ? 'en' : 'ar');
+  };
+
+  useEffect(() => {
+    if (forceArabic) setLocaleState('ar');
+    return undefined;
+  }, [forceArabic]);
+
+  const effectiveLocale = forceArabic ? 'ar' : locale;
+  const textAlign = typeof kioskTextAlign === 'function'
+    ? kioskTextAlign(effectiveLocale)
+    : (effectiveLocale === 'ar' ? 'right' : 'left');
+
+  return {
+    locale: effectiveLocale,
+    setLocale,
+    toggleLocale: forceArabic ? () => {} : toggleLocale,
+    isArabic: effectiveLocale === 'ar',
+    textAlign,
+    ready,
+    forceArabic,
+  };
+}
+`;
+
+  safeWriteFileSync(path.join(kioskPath, 'lib', 'productionKioskLocale.js'), localeJs);
+  safeWriteFileSync(path.join(kioskPath, 'hooks', 'useProductionKioskLocale.js'), hookJs);
+  safeWriteFileSync(path.join(appRoot, 'lib', 'productionKioskLocale.js'), localeJs);
+  safeWriteFileSync(path.join(appRoot, 'hooks', 'useProductionKioskLocale.js'), hookJs);
 }
 
 const CARPENTRY_APP_HOOKS = new Set([

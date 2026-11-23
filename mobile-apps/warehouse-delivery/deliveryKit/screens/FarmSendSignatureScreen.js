@@ -10,6 +10,7 @@ import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { useDeliveryDrivers } from '../../hooks/useDeliveryDrivers';
 import { getProductionDispatcherLabelSync } from '../lib/productionDispatcherLabel';
 import { saveLocalSentDelivery } from '../lib/deliverySentLocalStore';
+import { goDashboardThenOpenNote } from '../lib/goDashboardThenOpenNote';
 import { tUi } from '../lib/productionKioskI18n';
 import { formatWarehouseMobileApiError, warehouseMobileRequest } from '../shared/warehouseMobileApi';
 
@@ -125,11 +126,10 @@ export default function FarmSendSignatureScreen({ route, navigation }) {
         print_groups: printGroupsResolved,
       }).catch(() => {});
 
-      navigation.replace('FarmSendDone', {
+      goDashboardThenOpenNote(navigation, {
         deliveryNumber: dn,
-        printNoteNumber: dn,
         driverName,
-        supervisorName: dispatchedByName,
+        dispatchedBy: dispatchedByName,
         driverSignatureDataUri: dataUri,
         driverSignatureUrl: signatureUrl,
         printGroups: printGroupsResolved,

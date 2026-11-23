@@ -95,7 +95,7 @@ const apps = [
     scanDirs: ['screens', 'deliveryKit/screens', 'hooks'],
     extraWiring: () => {
       const dash = read('mobile-apps/warehouse-delivery/screens/DashboardScreen.js');
-      for (const nav of ['KitweSendHome', 'DeliveryRepairQueue', 'DeliveryOrderQueue', 'KitweSentDeliveries', 'SoldOrders']) {
+      for (const nav of ['KitweSendHome', 'DeliveryUnifiedQueue', 'KitweSentDeliveries', 'SoldOrders']) {
         if (!dash.includes(`navigate('${nav}')`)) fail(`delivery dashboard missing navigate ${nav}`);
       }
     },
@@ -134,6 +134,13 @@ const apps = [
       }
       if (!jobs.includes('allowFloor2WipDeduction={false}')) {
         fail('painting JobsScreen must disable Floor 2 material deduction');
+      }
+      if (!jobs.includes('JobCompletedUnitsRow')) {
+        fail('painting JobsScreen must use completed-qty stepper');
+      }
+      const api = read('mobile-apps/painting-workshop/services/paintingApi.js');
+      if (!api.includes("'painting-job-check-unit'")) {
+        fail('painting must persist completed qty via painting-job-check-unit');
       }
       const modal = read('mobile-apps/painting-workshop/components/ProductionJobMaterialsModal.js');
       if (!modal.includes('storeroomDeductionOnly')) {

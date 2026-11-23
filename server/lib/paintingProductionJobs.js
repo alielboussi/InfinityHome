@@ -255,9 +255,46 @@ async function serializePaintingJobForClient(sb, job) {
   return withSender;
 }
 
+function jobCheckedUnits(job) {
+  const meta = job?.metadata && typeof job.metadata === 'object' ? job.metadata : {};
+  const raw = meta.checked_unit_indexes || meta.checked_units || [];
+  return Array.isArray(raw) ? raw.map((n) => Math.floor(Number(n))).filter((n) => n >= 1) : [];
+}
+
+function buildPaintingJobUnitCheckPatch(job, nextChecked) {
+  const qty = Math.max(1, Math.floor(Number(job.product_qty) || 1));
+  const sorted = [...new Set(
+    (nextChecked || []).map((n) => Math.floor(Number(n))).filter((n) => n >= 1 && n <= qty),
+  )].sort((a, b) => a - b);
+  const meta = { ...(job.metadata || {}), checked_unit_indexes: sorted };
+
+  let patch = { metadata: meta };
+  const wasReady = job.status === 'ready';
+  const firstCheck = sorted.length > 0 && wasReady;
+  if (firstCheck) {
+    patch = {
+      ...patch,
+      status: 'running',
+      timer_started_at: new Date().toISOString(),
+      accumulated_ms: Math.max(0, Number(job.accumulated_ms) || 0),
+    };
+  }
+  if (sorted.length === 0 && (job.status === 'running' || job.status === 'ready')) {
+    const accumulated = computeElapsedMs(job);
+    patch = {
+      ...patch,
+      status: 'ready',
+      accumulated_ms: accumulated,
+      timer_started_at: null,
+    };
+  }
+  return { patch, sorted };
+}
+
 function serializeJob(job) {
   if (!job) return null;
   const qty = Math.max(1, Math.floor(Number(job.product_qty) || 1));
+  const checked = jobCheckedUnits(job);
   return {
     job_id: job.id,
     id: job.id,
@@ -265,6 +302,9 @@ function serializeJob(job) {
     product_name: job.product_name || '',
     product_sku: job.product_sku || '',
     product_qty: qty,
+    checked_unit_indexes: checked,
+    units_checked: checked.length,
+    all_units_checked: checked.length >= qty,
     status: job.status,
     accumulated_ms: Number(job.accumulated_ms) || 0,
     elapsed_ms: computeElapsedMs(job),
@@ -926,6 +966,24 @@ export async function cancelPaintingProductionJob(sb, {
     stock_restored: stockRestored,
     virtual_hold: src === 'virtual_hold',
   };
+}
+
+export async function setPaintingProductionJobUnitsCompleted(sb, {
+  jobId,
+  completedCount,
+  userId,
+}) {
+  const job = await loadJob(sb, jobId);
+  if (!ACTIVE_STATUSES.has(normalizeJobStatus(job.status))) throw new Error('Job is not active');
+  const qty = Math.max(1, Math.floor(Number(job.product_qty) || 1));
+  const count = Math.floor(Number(completedCount));
+  if (!Number.isFinite(count) || count < 0 || count > qty) {
+    throw new Error(`completed_count must be 0..${qty}`);
+  }
+  const nextChecked = count === 0 ? [] : Array.from({ length: count }, (_, i) => i + 1);
+  const { patch } = buildPaintingJobUnitCheckPatch(job, nextChecked);
+  const updated = await saveJobPatch(sb, job.id, patch);
+  return { job: await serializePaintingJobForClient(sb, updated) };
 }
 
 /** Find active painting jobs by product name (contains) or SKU (exact). */

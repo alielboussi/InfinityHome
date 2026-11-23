@@ -17,6 +17,15 @@ import { formatZambiaDate, formatZambiaTime } from '../lib/zambiaDateTime';
 import { tUi } from '../lib/productionKioskI18n';
 import { theme } from '../shared/theme';
 
+function sentKindLabel(documentKind, locale) {
+  const dk = String(documentKind || '').toLowerCase();
+  if (dk === 'farm_delivery' || dk === 'farm_return') return tUi('sentDeliveryKindFarm', locale);
+  if (dk === 'repair_delivery' || dk.includes('return')) return tUi('sentDeliveryKindRepair', locale);
+  if (dk === 'showroom_delivery') return tUi('sentDeliveryKindShowroom', locale);
+  if (dk === 'order_delivery' || dk === 'sold_delivery') return tUi('sentDeliveryKindCustomer', locale);
+  return tUi('sentDeliveryKindFloor1', locale);
+}
+
 export default function KitweSentDeliveryDetailScreen({ route, navigation }) {
   const sessionId = route.params?.sessionId || '';
   const { locale, toggleLocale, textAlign } = useProductionKioskLocale();
@@ -68,6 +77,7 @@ export default function KitweSentDeliveryDetailScreen({ route, navigation }) {
     documentKind,
     customerName: session.customer_name || '',
     customerPhone: session.customer_phone || '',
+    partialDelivery: session.partial_delivery === true,
   } : null;
 
   const onViewPdf = async () => {
@@ -106,6 +116,10 @@ export default function KitweSentDeliveryDetailScreen({ route, navigation }) {
         {session ? (
           <View style={kiosk.card}>
             <Text style={[kiosk.heroNumber, { textAlign }]}>{noteNumber}</Text>
+            <Text style={[kiosk.metaLine, { textAlign }]}>
+              {sentKindLabel(documentKind, locale)}
+              {session.partial_delivery ? ' · Partial' : ''}
+            </Text>
             {session.delivery_number && noteNumber !== session.delivery_number ? (
               <Text style={[kiosk.metaLine, { textAlign }]}>
                 {tUi('sentDeliveryRefWhd', locale)}: {session.delivery_number}
@@ -178,8 +192,9 @@ export default function KitweSentDeliveryDetailScreen({ route, navigation }) {
           documentKind={documentKind}
           customerName={session.customer_name || ''}
           customerPhone={session.customer_phone || ''}
+          partialDelivery={session.partial_delivery === true}
           reprintMode
-          autoPrintOnOpen={false}
+          autoPrintOnOpen
           onDone={() => setPrintOpen(false)}
         />
       ) : null}

@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { theme } from '../shared/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import KioskStickyFooter from '../components/KioskStickyFooter';
+import KioskStickyFooter from '../../components/KioskStickyFooter';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
 import { kiosk } from '../components/kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
@@ -46,6 +46,16 @@ import {
 } from '../services/productionApi';
 import { isMattressCatalogProductName } from '../lib/isMattressCatalogProductName';
 import { formatProductionNameClashMessage } from '../lib/productionNameClashUi';
+function portalSetupWithQty(pending, extras = {}) {
+  const qty = Math.max(0, Math.floor(Number(pending?.qtyNum) || 0));
+  return {
+    ...(pending?.pendingPortalSetup || {}),
+    ...extras,
+    initial_quantity: qty,
+    floor2_product_qty: qty,
+  };
+}
+
 /** @param {'upholstery'|'carpentry'} presetGroup — upholstery = seater presets only; carpentry = carpentry presets only */
 export default function CreateScreen({ navigation, presetGroup = 'upholstery', inventoryTarget }) {
   const carpentryOnly = presetGroup === 'carpentry';
@@ -428,6 +438,7 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
             ...pending,
             resumeAssemblyId: parsed.assemblyId,
             pendingLabelPrint: parsed.pendingLabelPrint || null,
+            pendingPortalSetup: portalSetupWithQty(pending, parsed.pendingPortalSetup || { portal_catalog: 'carpentry' }),
           };
         }
         setAiPhotoStatus(tUi('photoProcessing', locale));
@@ -437,10 +448,7 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
             assemblyId: parsed.assemblyId,
             imageBase64: uploadPhoto,
             pendingLabelPrint: pendingSaveRef.current?.pendingLabelPrint || parsed.pendingLabelPrint,
-            pendingPortalSetup: {
-              portal_catalog: 'carpentry',
-              floor2_product_qty: pending.qtyNum,
-            },
+            pendingPortalSetup: portalSetupWithQty(pending, { portal_catalog: 'carpentry' }),
             preset: pending.preset,
             onAttempt: (attempt, max) => {
               setAiPhotoStatus(tUi('aiPhotoRetry', locale).replace('{n}', String(attempt)).replace('{max}', String(max)));
@@ -492,7 +500,7 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
           ...pending,
           resumeAssemblyId: parsed.assemblyId,
           pendingLabelPrint: parsed.pendingLabelPrint || null,
-          pendingPortalSetup: parsed.pendingPortalSetup || null,
+          pendingPortalSetup: portalSetupWithQty(pending, parsed.pendingPortalSetup || { portal_catalog: 'upholstery' }),
         };
       }
 
@@ -501,7 +509,12 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
         assemblyId: parsed.assemblyId,
         imageBase64: uploadPhoto,
         pendingLabelPrint: pendingSaveRef.current?.pendingLabelPrint || parsed.pendingLabelPrint,
-        pendingPortalSetup: pendingSaveRef.current?.pendingPortalSetup || parsed.pendingPortalSetup,
+        pendingPortalSetup: portalSetupWithQty(
+          pendingSaveRef.current || pending,
+          pendingSaveRef.current?.pendingPortalSetup
+            || parsed.pendingPortalSetup
+            || { portal_catalog: 'upholstery' },
+        ),
         preset: pending.preset,
         onAttempt: (attempt, max) => {
           setAiPhotoStatus(tUi('aiPhotoRetry', locale).replace('{n}', String(attempt)).replace('{max}', String(max)));

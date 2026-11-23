@@ -37,6 +37,8 @@ function openStagedDelivery(navigation, row) {
     queueKind: 'repair',
     returnOrderId: row.return_order_id,
     documentKind: 'repair_delivery',
+    customerName,
+    customerPhone,
     repairCustomerName: customerName,
     repairCustomerPhone: customerPhone,
   });

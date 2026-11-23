@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8" />
+  <title>Upholstery app guide — Infinity Home</title>
+  <style>
+    @page { size: A4; margin: 14mm 12mm; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: "Segoe UI", "Tahoma", "Arial", sans-serif;
+      color: #0f172a;
+      background: #fff;
+      font-size: 12.5px;
+      line-height: 1.55;
+    }
+    h1 { font-size: 26px; margin: 0 0 6px; color: #0d47a1; }
+    h2 { font-size: 16px; margin: 0 0 10px; color: #0d47a1; border-bottom: 2px solid #0d47a1; padding-bottom: 4px; }
+    h3 { font-size: 13.5px; margin: 0 0 6px; color: #1e3a5f; }
+    p { margin: 0 0 8px; }
+    .sub { color: #475569; margin-bottom: 16px; }
+    .page { page-break-after: always; }
+    .page:last-child { page-break-after: auto; }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .badge {
+      background: #0d47a1;
+      color: #fff;
+      font-weight: 700;
+      padding: 6px 12px;
+      border-radius: 8px;
+      white-space: nowrap;
+    }
+    .flow { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+    .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+    .box {
+      border: 1.5px solid #334155;
+      border-radius: 10px;
+      padding: 8px 10px;
+      min-width: 140px;
+      text-align: center;
+      background: #f8fafc;
+    }
+    .box b { display: block; font-size: 13px; }
+    .box small { color: #475569; }
+    .box.start { background: #0d47a1; color: #fff; border-color: #0d47a1; }
+    .box.start small { color: #dbeafe; }
+    .box.create { background: #ecfdf5; border-color: #059669; }
+    .box.mfg { background: #eff6ff; border-color: #2563eb; }
+    .box.orders { background: #fff7ed; border-color: #ea580c; }
+    .box.end { background: #f1f5f9; }
+    .arrow { text-align: center; color: #0d47a1; font-size: 18px; font-weight: 700; line-height: 1; }
+    .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .card {
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: #fff;
+      break-inside: avoid;
+    }
+    .card h3 { margin-bottom: 4px; }
+    ol, ul { margin: 4px 0 0; padding-left: 18px; }
+    li { margin-bottom: 3px; }
+    .icon { font-weight: 800; color: #0d47a1; }
+    table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+    th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; vertical-align: top; }
+    th { background: #0d47a1; color: #fff; }
+    .note {
+      background: #fff7ed;
+      border: 1px solid #fdba74;
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-top: 10px;
+    }
+    .footer { color: #64748b; font-size: 11px; margin-top: 12px; }
+  </style>
+</head>
+<body>
+
+<section class="page">
+  <div class="header">
+    <div>
+      <h1>How to use the Upholstery app</h1>
+      <p class="sub">Infinity Home workshop phone app. Use the AR / EN button on the top bar on every screen.</p>
+    </div>
+    <div class="badge">Upholstery</div>
+  </div>
+
+  <h2>1) Map from the home screen</h2>
+  <div class="flow">
+    <div class="row">
+      <div class="box start"><b>Sign in</b><small>Google account allowed in User Access</small></div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="row">
+      <div class="box start"><b>Home</b><small>Three tiles only</small></div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="grid3">
+      <div class="box create"><b>Create new item</b><small>New seating → /upholstery portal + qty + AI photo</small></div>
+      <div class="box mfg"><b>Manufacture</b><small>Deduct Floor 2 raw WIP → job on Orders</small></div>
+      <div class="box orders"><b>Orders</b><small>Factory quotes + manufacture jobs + repairs</small></div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="grid3">
+      <div class="box end"><b>Floor 2 (raw WIP)</b><small>Unfinished seating stock to manufacture from</small></div>
+      <div class="box end"><b>Floor 1</b><small>Finished stock on the warehouse catalog</small></div>
+      <div class="box end"><b>Delivery app</b><small>Customer / showroom hold after ready qty</small></div>
+    </div>
+  </div>
+  <p class="note">The <b>ع / EN</b> button on the top bar switches Arabic and English on every page. Upholstery does <b>not</b> send to Painting — that is Carpentry only.</p>
+  <p class="footer">Internal upholstery workshop guide — Infinity Home</p>
+</section>
+
+<section class="page">
+  <h2>2) What each page is for</h2>
+  <div class="grid3" style="grid-template-columns: 1fr 1fr; gap: 10px;">
+    <div class="card">
+      <h3>Create new item</h3>
+      <p>Add a seating product that is not in the catalog yet. It is saved on the <b>/upholstery</b> web portal with the quantity you type, plus an AI-retouched catalog photo.</p>
+      <ol>
+        <li>Enter the base name, then pick the seating type (3 seater, recliner, and so on).</li>
+        <li>Enter dimensions in cm and quantity (must be 1 or more).</li>
+        <li>Photograph the piece when asked. Wait for the AI photo, then Save.</li>
+        <li>The same qty is injected on the portal with the photo — not 0.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>Manufacture</h3>
+      <p>Grid of Floor 2 <b>raw WIP</b> only. Tapping deducts that qty from Floor 2 and opens a production job on Orders.</p>
+      <ol>
+        <li>Search or scan the Floor 2 label barcode / QR.</li>
+        <li>Tap the card → enter quantity (cannot exceed Floor 2 on hand).</li>
+        <li>Confirm. Floor 2 raw is deducted now. Open <b>Orders</b> to add materials and finish.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>Orders — factory quotes (QT#)</h3>
+      <p>Customer / showroom orders sent to upholstery. Quote number is top-right. Badges: Customer order or Showroom order. Orders can start even if Floor 2 qty is 0 — manufacture first if stock is short.</p>
+      <ol>
+        <li><b>Play ▶</b> accept the order and start the timer.</li>
+        <li><b>Pause ⏸</b> stop the timer without finishing.</li>
+        <li><b>Completed items</b> stepper (− / number / + then ✓): how many pieces of that line are ready.</li>
+        <li>Then choose <b>Floor 1 stock</b> or <b>Send to delivery</b>. You can send a partial qty (for example 3 of 8) before the whole order is complete. Completed qty can only go up.</li>
+        <li><b>Stop ⏹</b> end the whole order when every line is done.</li>
+        <li><b>Wrench</b> storeroom materials used on the order.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>Orders — manufacture jobs</h3>
+      <p>Jobs opened from Manufacture. Timer runs while you work. Use the same completed-qty stepper for pieces on the job.</p>
+      <ol>
+        <li>▶ Play / ⏸ Pause the timer.</li>
+        <li>Wrench: add storeroom materials (scan or search) and pick storeroom 1 / 2 / 3.</li>
+        <li>⏹ Finish: choose <b>Floor 1</b> (finished warehouse stock + Zebra labels) or <b>Delivery</b> (virtual hold in the Delivery app).</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>Orders — repairs</h3>
+      <p>Customer returns for upholstery appear in the same Orders list (Repair badge).</p>
+      <ol>
+        <li>▶ Accept the repair and start work.</li>
+        <li>⏸ Pause.</li>
+        <li>Wrench to add materials if needed.</li>
+        <li>⏹ Complete — the repair joins the Delivery app Repairs queue (awaiting driver). Warehouse floors are not credited.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>Search on Orders</h3>
+      <p>Search by quote number QT, customer name, or phone. The list mixes quotes, jobs, and repairs.</p>
+    </div>
+  </div>
+</section>
+
+<section class="page">
+  <h2>3) What the buttons mean</h2>
+  <table>
+    <thead>
+      <tr><th>Control</th><th>Meaning</th><th>When to use it</th></tr>
+    </thead>
+    <tbody>
+      <tr><td class="icon">▶ Play</td><td>Start or resume work</td><td>Accept a quote, run a job, accept a repair</td></tr>
+      <tr><td class="icon">⏸ Pause</td><td>Stop the timer without finishing</td><td>Break or waiting for material</td></tr>
+      <tr><td class="icon">⏹ Stop / Finish</td><td>Close the work and choose destination</td><td>Quote or job: Floor 1 or Delivery</td></tr>
+      <tr><td class="icon">Wrench</td><td>Storeroom materials</td><td>Record foam / fabric / BOM from storerooms</td></tr>
+      <tr><td class="icon">− / qty / + then ✓</td><td>Completed items on a quote line or job</td><td>After pieces are ready — then Floor 1 or Delivery (partial OK)</td></tr>
+    </tbody>
+  </table>
+
+  <h2 style="margin-top:16px">4) Where the piece goes</h2>
+  <table>
+    <thead>
+      <tr><th>Action</th><th>Result</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Save on Create new item</td><td>Product on /upholstery portal with entered qty + AI catalog photo</td></tr>
+      <tr><td>Tap Manufacture and confirm qty</td><td>Deduct Floor 2 raw WIP now; job appears on Orders</td></tr>
+      <tr><td>Finish a job → Floor 1</td><td>Finished stock on Floor 1 + Zebra labels</td></tr>
+      <tr><td>Finish a job → Delivery</td><td>Virtual hold in the Delivery app (driver collects)</td></tr>
+      <tr><td>Quote stepper → Floor 1</td><td>That ready qty stored on Floor 1</td></tr>
+      <tr><td>Quote stepper → Delivery</td><td>That ready qty (even 3 of 8) on the Delivery app with the same customer name and phone</td></tr>
+      <tr><td>Complete a repair</td><td>Delivery app Repairs queue — floors not increased</td></tr>
+    </tbody>
+  </table>
+
+  <div class="note">
+    <b>Access:</b> If you see “Access denied”, the user is not enabled on the web portal → User Access → Production → Upholstery. After saving, tap Check access in the app.
+  </div>
+  <p class="footer">Keep this guide next to workshop phones. It matches the current Upholstery app screens.</p>
+</section>
+
+</body>
+</html>

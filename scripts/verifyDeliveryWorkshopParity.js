@@ -61,6 +61,8 @@ assert(kitweHome.includes('filterAssembliesForDeliveryFloor1Only'), 'Kitwe send 
 for (const finishOp of ['painting-job-finish', 'carpentry-job-finish', 'upholstery-job-finish']) {
   assert(mobile.includes(`'${finishOp}'`), `warehouse-mobile must route ${finishOp}`);
 }
+assert(mobile.includes("'painting-job-check-unit'"), 'warehouse-mobile must route painting completed-qty');
+assert(mobile.includes("'upholstery-job-check-unit'"), 'warehouse-mobile must route upholstery completed-qty');
 
 const paintingFinish = read('server/lib/paintingProductionJobs.js');
 assert(paintingFinish.includes('registerProductionJobAwaitingDriver'), 'painting finish → delivery virtual');

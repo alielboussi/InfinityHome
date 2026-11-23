@@ -16,6 +16,7 @@ import {
   normalizeProductionQuoteLine,
 } from './quoteProductionOrderUi';
 import { displayQuoteFieldValue, formatQuoteLineQtyLabel } from './quoteArabicTranslate';
+import JobCompletedUnitsRow from './components/JobCompletedUnitsRow';
 
 function lineImageUrl(row) {
   const meta = row?.metadata && typeof row.metadata === 'object' ? row.metadata : {};
@@ -138,6 +139,9 @@ export function QuoteProductionWorkshopLineRows({
   onMarkReady,
   onHandoffWillStart,
   onHandoff,
+  /** Same completed-qty stepper as manufacture jobs (Upholstery). */
+  useCompletedQtyStepper = false,
+  onSetCompleted,
 }) {
   const list = Array.isArray(lines) ? lines : [];
 
@@ -235,7 +239,9 @@ export function QuoteProductionWorkshopLineRows({
           0,
           Number(row.production_remaining_qty ?? (ordered - completed)),
         );
-        const displayQty = remaining > 0 ? remaining : ordered;
+        const displayQty = useCompletedQtyStepper
+          ? ordered
+          : (remaining > 0 ? remaining : ordered);
         const qtyUnit = String(row.unit_abbr || row.unit || '').trim();
         const nameShown = String(row.name || '').trim();
         const qtyLead =
@@ -248,7 +254,7 @@ export function QuoteProductionWorkshopLineRows({
         return (
           <View key={key} style={styles.lineBlock}>
             <View style={styles.lineTitleRow}>
-              {canMark ? (
+              {useCompletedQtyStepper ? null : canMark ? (
                 <Pressable
                   style={styles.checkBox}
                   onPress={() => {
@@ -268,6 +274,24 @@ export function QuoteProductionWorkshopLineRows({
                 compactRight
               />
             </View>
+            {useCompletedQtyStepper && (orderOpen || remaining > 0) ? (
+              <JobCompletedUnitsRow
+                rowKey={key}
+                productQty={ordered}
+                savedCount={completed}
+                locale={locale}
+                textAlign={textAlign}
+                disabled={!orderOpen || !row.id}
+                tUi={tUi}
+                onApply={async (_id, count) => {
+                  const added = await onSetCompleted?.(row, count);
+                  const qty = Math.floor(Number(added) || 0);
+                  if (qty < 1) return;
+                  deferAfterUiIdle(() => runHandoffPrompt(row, qty));
+                }}
+              />
+            ) : useCompletedQtyStepper ? null : (
+              <>
             {completed > 0 ? (
               <Text style={[styles.progress, lineTextIndentStyle(textAlign), { textAlign }]}>
                 {tUi('quoteLineCompletedQty', locale)}: {completed}
@@ -278,6 +302,8 @@ export function QuoteProductionWorkshopLineRows({
                 {tUi('quoteLineRemainingQty', locale)}: {remaining}
               </Text>
             ) : null}
+              </>
+            )}
             <QuoteProductionLineExtras
               line={row}
               route={route}

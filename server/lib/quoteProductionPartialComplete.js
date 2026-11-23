@@ -256,6 +256,7 @@ export async function handoffQuoteLinePartialToDelivery(sb, {
   const items = await loadQuoteItems(sb, qid);
   const raw = findQuoteLine(items, itemId);
   const name = String(raw?.name_override || raw?.name || 'Product').trim();
+  const summary = buildProductionLineSummaryRow(raw, meta);
   const { data: quoteRow } = await sb.from('quotations').select('quote_number').eq('id', qid).maybeSingle();
 
   const nextMetaTagged = tagLastLineSliceDisposition(meta, itemId, 'delivery');
@@ -285,6 +286,7 @@ export async function handoffQuoteLinePartialToDelivery(sb, {
   if (!assemblyId) throw new Error('No assembly linked for delivery handoff');
 
   const holdId = newUuid();
+  const orderedQty = quoteLineOrderedQty(summary);
   const hold = {
     id: holdId,
     quote_id: qid,
@@ -292,12 +294,16 @@ export async function handoffQuoteLinePartialToDelivery(sb, {
     item_id: String(itemId),
     line_name: name,
     quantity: sliceQty,
+    ordered_qty: orderedQty,
     department: String(route || routing.route || 'upholstery').toLowerCase(),
     assembly_id: String(assemblyId),
     registered_at: now,
     stage: DELIVERY_ADMIN_STAGE.AWAITING_DRIVER,
     kind: DELIVERY_ADMIN_KIND.ORDER,
     partial: true,
+    customer_name: String(meta.customer_name || '').trim() || null,
+    customer_phone: String(meta.customer_phone || '').trim() || null,
+    showroom_order: meta.showroom_order === true,
     by: userId || null,
   };
 
