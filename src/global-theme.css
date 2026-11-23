@@ -302,6 +302,28 @@
   color: #3730a3;
 }
 
+.production-tracking-card__type-badge {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+
+.production-tracking-card__type-badge--customer {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.production-tracking-card__type-badge--showroom {
+  background: #dbeafe;
+  color: #1e3a5f;
+}
+
+.production-tracking-card__type-badge--repair {
+  background: #ffedd5;
+  color: #7c2d12;
+}
+
 .production-tracking-card__dept {
   font-size: 11px;
   font-weight: 700;
@@ -393,6 +415,12 @@ body.enterprise-theme .production-tracking-page .production-tracking-card__type-
 body.enterprise-theme .production-tracking-page .production-tracking-card__type-badge--customer {
   background: #dcfce7;
   border: 1px solid #86efac;
+}
+
+body.enterprise-theme .production-tracking-page .production-tracking-card__type-badge--repair {
+  background: #ffedd5;
+  border: 1px solid #fdba74;
+  color: #7c2d12;
 }
 
 .warehouse-assembly-card-list {

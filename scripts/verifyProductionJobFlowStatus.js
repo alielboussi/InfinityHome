@@ -14,7 +14,9 @@ const paintingActive = computeProductionFlowStatus('painting', { status: 'runnin
 assert(paintingActive === 'In Painting', paintingActive);
 
 const carpentryActive = computeProductionFlowStatus('carpentry', { status: 'running', metadata: {} });
-assert(carpentryActive === 'In production', carpentryActive);
+assert(carpentryActive === 'In Carpentry', carpentryActive);
+const upholsteryActive = computeProductionFlowStatus('upholstery', { status: 'ready', metadata: {} });
+assert(upholsteryActive === 'In Upholstery', upholsteryActive);
 
 const floor1 = computeProductionFlowStatus('painting', {
   status: 'completed',

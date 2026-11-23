@@ -1,6 +1,5 @@
 import {
   computeProductionFlowStatus,
-  isActiveProductionJobStatus,
   productTitleForTrackingJob,
   productionDepartmentLabel,
 } from './productionJobFlowStatus';
@@ -16,25 +15,25 @@ function assemblyKey(department, job) {
   return String(job.assembly_id || '').trim();
 }
 
-function shouldHideBehindPainting(department, job, activePaintingAssemblyIds) {
-  const key = assemblyKey(department, job);
-  if (!key || !activePaintingAssemblyIds.has(key)) return false;
-  const st = String(job.status || '').trim().toLowerCase();
-  return isActiveProductionJobStatus(st) || st === 'completed';
-}
-
 export function jobToTrackingRow(department, job) {
   const meta = job?.metadata && typeof job.metadata === 'object' ? job.metadata : {};
   const status = String(job?.status || '').trim().toLowerCase();
   const qty = Math.max(1, Math.floor(Number(job?.product_qty) || 1));
   const quoteId = String(meta.carpentry_quote_id || meta.quote_id || '').trim() || null;
   const quoteLineId = String(meta.quote_line_id || '').trim() || null;
+  const showroom = job.showroom_order === true || meta.showroom_order === true;
+  const customerName = String(job.customer_name || meta.customer_name || '').trim();
+  const customerPhone = String(job.customer_phone || meta.customer_phone || '').trim();
+  const customer = !showroom && (
+    job.customer_order === true || meta.customer_order === true || Boolean(customerName) || Boolean(quoteId)
+  );
   return {
     id: String(job.job_id || job.id || ''),
     track_kind: 'factory',
     production_job_id: String(job.job_id || job.id || ''),
     quote_id: quoteId,
     quote_line_id: quoteLineId,
+    quote_number: String(job.quote_number || meta.quote_number || '').trim() || null,
     department,
     department_label: productionDepartmentLabel(department),
     assembly_id: assemblyKey(department, job),
@@ -53,6 +52,11 @@ export function jobToTrackingRow(department, job) {
     timer_started_at: job.timer_started_at || null,
     started_at: job.started_at || null,
     completed_at: job.completed_at || null,
+    customer_name: customerName || null,
+    customer_phone: customerPhone || null,
+    showroom_order: showroom,
+    customer_order: customer,
+    catalog_manufacture: meta.catalog_manufacture === true || job.catalog_manufacture === true,
   };
 }
 
@@ -64,19 +68,9 @@ export function mergeProductionJobsTrackingClient({
   department = null,
 } = {}) {
   const deptFilter = String(department || '').trim().toLowerCase();
-  const activePaintingAssemblyIds = new Set();
-  if (!deptFilter || deptFilter === 'all' || deptFilter === 'painting') {
-    for (const job of painting) {
-      if (!isActiveProductionJobStatus(job.status)) continue;
-      const key = assemblyKey('painting', job);
-      if (key) activePaintingAssemblyIds.add(key);
-    }
-  }
-
   const merged = [];
   if (!deptFilter || deptFilter === 'all' || deptFilter === 'upholstery') {
     for (const job of upholstery) {
-      if (shouldHideBehindPainting('upholstery', job, activePaintingAssemblyIds)) continue;
       const row = jobToTrackingRow('upholstery', job);
       if (isProductionTrackingRowHidden(row)) continue;
       merged.push(row);
@@ -84,7 +78,6 @@ export function mergeProductionJobsTrackingClient({
   }
   if (!deptFilter || deptFilter === 'all' || deptFilter === 'carpentry') {
     for (const job of carpentry) {
-      if (shouldHideBehindPainting('carpentry', job, activePaintingAssemblyIds)) continue;
       const row = jobToTrackingRow('carpentry', job);
       if (isProductionTrackingRowHidden(row)) continue;
       merged.push(row);

@@ -1,6 +1,5 @@
 import {
   computeProductionFlowStatus,
-  isActiveProductionJobStatus,
   productTitleForTrackingJob,
   productionDepartmentLabel,
 } from '../../src/utils/productionJobFlowStatus.js';
@@ -45,6 +44,7 @@ function deliveryAdminStage(meta) {
 
 function quoteOrderFlowStatus(routing, run) {
   const meta = routing?.metadata && typeof routing.metadata === 'object' ? routing.metadata : {};
+  const deptWord = productionDepartmentLabel(routing?.route);
   if (routing?.completed_at) {
     if (meta.pending_floor1_credit?.assembly_id || meta.floor1_awaiting_hassan === true) {
       return 'Awaiting Floor 1 approval';
@@ -57,11 +57,31 @@ function quoteOrderFlowStatus(routing, run) {
   }
   if (routing?.accepted_at || run?.started_at) {
     const runMeta = run?.metadata && typeof run.metadata === 'object' ? run.metadata : {};
-    const paused = String(runMeta.timer_status || '').toLowerCase() === 'paused' || Boolean(runMeta.paused_at);
-    if (paused) return 'In production (paused)';
-    return 'In production';
+    const paused = String(runMeta.timer_status || '').toLowerCase() === 'paused'
+      || Boolean(runMeta.paused_at)
+      || String(meta.timer_status || '').toLowerCase() === 'paused';
+    if (paused) return `In ${deptWord} (paused)`;
+    return `In ${deptWord}`;
   }
-  return 'Awaiting workshop';
+  return `Awaiting ${deptWord}`;
+}
+
+function factoryOrderFlags(row, meta = {}) {
+  const showroom = row?.showroom_order === true || meta.showroom_order === true;
+  const customerName = String(row?.customer_name || meta.customer_name || '').trim();
+  const customerPhone = String(row?.customer_phone || meta.customer_phone || '').trim();
+  const quoteId = String(meta.carpentry_quote_id || meta.quote_id || row?.quote_id || '').trim();
+  const customer = !showroom && (
+    row?.customer_order === true || meta.customer_order === true || Boolean(customerName) || Boolean(quoteId)
+  );
+  return {
+    customer_name: customerName || null,
+    customer_phone: customerPhone || null,
+    showroom_order: showroom,
+    customer_order: customer,
+    catalog_manufacture: meta.catalog_manufacture === true || row?.catalog_manufacture === true,
+    quote_number: String(row?.quote_number || meta.quote_number || '').trim() || null,
+  };
 }
 
 function toTrackingRow(department, row) {
@@ -70,12 +90,14 @@ function toTrackingRow(department, row) {
   const flowStatus = computeProductionFlowStatus(department, row);
   const quoteId = String(meta.carpentry_quote_id || meta.quote_id || '').trim() || null;
   const quoteLineId = String(meta.quote_line_id || '').trim() || null;
+  const flags = factoryOrderFlags(row, meta);
   return {
     id: String(row.id),
     track_kind: 'factory',
     production_job_id: String(row.id),
     quote_id: quoteId,
     quote_line_id: quoteLineId,
+    quote_number: flags.quote_number,
     department,
     department_label: productionDepartmentLabel(department),
     assembly_id: assemblyKeyForRow(department, row),
@@ -97,6 +119,11 @@ function toTrackingRow(department, row) {
     pending_floor1_credit: Boolean(meta.pending_floor1_credit?.assembly_id),
     floor1_awaiting_hassan: meta.floor1_awaiting_hassan === true,
     production_locked: meta.production_locked === true || Boolean(row.completed_at),
+    customer_name: flags.customer_name,
+    customer_phone: flags.customer_phone,
+    showroom_order: flags.showroom_order,
+    customer_order: flags.customer_order,
+    catalog_manufacture: flags.catalog_manufacture,
   };
 }
 
@@ -106,7 +133,7 @@ async function listQuoteOrdersForTracking(sb) {
     .select('quote_id, route, sent_to_production_at, accepted_at, completed_at, metadata')
     .not('sent_to_production_at', 'is', null)
     .order('sent_to_production_at', { ascending: false })
-    .limit(250);
+    .limit(400);
   if (error) return [];
   const quoteIds = (routes || []).map((r) => r.quote_id).filter(Boolean);
   if (!quoteIds.length) return [];
@@ -126,21 +153,31 @@ async function listQuoteOrdersForTracking(sb) {
     const lines = Array.isArray(meta.lines) ? meta.lines : [];
     const firstLine = lines[0] || {};
     const productName = String(firstLine.name || meta.quote_number || `Quote ${qid.slice(0, 8)}`).trim();
+    const showroom = meta.showroom_order === true;
+    const customerName = showroom ? '' : String(meta.customer_name || '').trim();
     let timerStatus = 'ready';
-    if (run) {
-      if (run.completed_at || routing.completed_at) timerStatus = 'completed';
-      else if (runMeta.paused_at || String(runMeta.timer_status || '').toLowerCase() === 'paused') timerStatus = 'paused';
+    if (routing.completed_at || run?.completed_at) {
+      timerStatus = 'completed';
+    } else if (run) {
+      if (runMeta.paused_at || String(runMeta.timer_status || '').toLowerCase() === 'paused') timerStatus = 'paused';
       else if (run.started_at) timerStatus = 'running';
+    } else if (routing.accepted_at) {
+      const paused = String(meta.timer_status || '').toLowerCase() === 'paused' || Boolean(meta.paused_at);
+      timerStatus = paused ? 'paused' : 'running';
     }
-    const accumulated = Math.max(0, Number(runMeta.accumulated_ms) || 0);
+    const accumulated = Math.max(
+      0,
+      Number(runMeta.accumulated_ms) || Number(meta.accumulated_ms) || 0,
+    );
     out.push({
       id: `quote:${qid}`,
-      track_kind: meta.showroom_order === true ? 'showroom_order' : 'quote_order',
+      track_kind: showroom ? 'showroom_order' : 'quote_order',
       quote_id: qid,
       quote_number: meta.quote_number || null,
-      showroom_order: meta.showroom_order === true,
-      customer_order: meta.customer_order === true,
-      customer_name: meta.customer_name || null,
+      showroom_order: showroom,
+      customer_order: !showroom && (meta.customer_order === true || Boolean(customerName)),
+      customer_name: customerName || null,
+      customer_phone: showroom ? null : (String(meta.customer_phone || '').trim() || null),
       production_job_id: run?.id || null,
       department: route,
       department_label: productionDepartmentLabel(route),
@@ -168,10 +205,12 @@ async function listQuoteOrdersForTracking(sb) {
 
 async function listRepairsForTracking(sb) {
   const { listWarehouseReturnOrders } = await import('./warehouseReturnOrders.js');
-  const { return_orders: repairs } = await listWarehouseReturnOrders(sb, { trackageOnly: true, limit: 200 });
+  const { return_orders: repairs } = await listWarehouseReturnOrders(sb, { trackageOnly: true, limit: 400 });
   return (repairs || []).map((row) => {
     const dept = String(row.repair_department || 'carpentry').toLowerCase();
     const normalizedDept = dept.includes('uphol') ? 'upholstery' : (dept.includes('paint') ? 'painting' : 'carpentry');
+    const customerName = String(row.customer_name || '').trim();
+    const flow = String(row.lifecycle_badge || row.status || 'Repair').replace(/_/g, ' ');
     return {
       id: `repair:${row.id}`,
       track_kind: 'repair',
@@ -183,13 +222,16 @@ async function listRepairsForTracking(sb) {
       product_sku: '',
       product_qty: Math.max(1, Number(row.quantity) || 1),
       timer_status: row.timer_status || 'ready',
-      flow_status: row.lifecycle_badge || String(row.status || 'Repair').replace(/_/g, ' '),
+      flow_status: `${productionDepartmentLabel(normalizedDept)} · ${flow}`,
       accumulated_ms: Math.max(0, Number(row.accumulated_ms) || 0),
       elapsed_ms: Math.max(0, Number(row.elapsed_ms) || 0),
       timer_started_at: row.timer_started_at || null,
       started_at: row.work_started_at || row.created_at || null,
       completed_at: row.work_completed_at || null,
-      customer_name: row.customer_name || null,
+      customer_name: customerName || null,
+      customer_phone: String(row.customer_phone || '').trim() || null,
+      customer_order: Boolean(customerName),
+      showroom_order: !customerName,
     };
   });
 }
@@ -205,14 +247,9 @@ function isCancelledFactoryJob(row) {
   return String(row?.status || '').trim().toLowerCase() === 'cancelled';
 }
 
-function shouldHideBehindPainting(department, row, activePaintingAssemblyIds) {
-  const key = assemblyKeyForRow(department, row);
-  if (!key || !activePaintingAssemblyIds.has(key)) return false;
-  const st = String(row.status || '').trim().toLowerCase();
-  return isActiveProductionJobStatus(st) || st === 'completed';
-}
-
 async function loadTableJobs(sb, table) {
+  const ordered = await sb.from(table).select('*').order('started_at', { ascending: false }).limit(500);
+  if (!ordered.error) return ordered.data || [];
   const { data, error } = await sb.from(table).select('*').limit(500);
   if (error) {
     if (/not found|does not exist/i.test(String(error.message || ''))) return [];
@@ -221,15 +258,30 @@ async function loadTableJobs(sb, table) {
   return data || [];
 }
 
+function applyQuoteCustomerToFactoryRow(row, quoteById) {
+  const qid = String(row?.quote_id || '').trim();
+  if (!qid) return row;
+  const q = quoteById.get(qid);
+  if (!q) return row;
+  return {
+    ...row,
+    quote_number: row.quote_number || q.quote_number || null,
+    customer_name: row.customer_name || q.customer_name || null,
+    customer_phone: row.customer_phone || q.customer_phone || null,
+    showroom_order: row.showroom_order === true || q.showroom_order === true,
+    customer_order: row.customer_order === true || q.customer_order === true,
+  };
+}
+
 /** Unified Hassan / Orders tracking — all departments, flow status, no materials. */
 export async function listProductionJobsForTracking(sb, {
   department = null,
   track_kind = null,
-  limit = 300,
+  limit = 500,
 } = {}) {
   const deptFilter = normalizeDepartmentFilter(department);
   const kindFilter = normalizeTrackKindFilter(track_kind);
-  const cap = Math.min(500, Math.max(1, Number(limit) || 300));
+  const cap = Math.min(800, Math.max(1, Number(limit) || 500));
 
   const includeFactory = !kindFilter || kindFilter === 'factory';
   const includeQuote = !kindFilter || kindFilter === 'quote' || kindFilter === 'quote_order' || kindFilter === 'showroom';
@@ -243,28 +295,21 @@ export async function listProductionJobsForTracking(sb, {
     includeRepair ? listRepairsForTracking(sb) : [],
   ]);
 
-  const activePaintingAssemblyIds = new Set();
-  for (const row of painting) {
-    if (!isActiveProductionJobStatus(row.status)) continue;
-    const key = assemblyKeyForRow('painting', row);
-    if (key) activePaintingAssemblyIds.add(key);
-  }
+  const quoteById = new Map((quoteRows || []).map((q) => [String(q.quote_id || ''), q]));
 
   const merged = [];
 
   for (const row of upholstery) {
     if (isCancelledFactoryJob(row)) continue;
-    if (shouldHideBehindPainting('upholstery', row, activePaintingAssemblyIds)) continue;
-    merged.push(toTrackingRow('upholstery', row));
+    merged.push(applyQuoteCustomerToFactoryRow(toTrackingRow('upholstery', row), quoteById));
   }
   for (const row of carpentry) {
     if (isCancelledFactoryJob(row)) continue;
-    if (shouldHideBehindPainting('carpentry', row, activePaintingAssemblyIds)) continue;
-    merged.push(toTrackingRow('carpentry', row));
+    merged.push(applyQuoteCustomerToFactoryRow(toTrackingRow('carpentry', row), quoteById));
   }
   for (const row of painting) {
     if (isCancelledFactoryJob(row)) continue;
-    merged.push(toTrackingRow('painting', row));
+    merged.push(applyQuoteCustomerToFactoryRow(toTrackingRow('painting', row), quoteById));
   }
 
   for (const row of quoteRows) {

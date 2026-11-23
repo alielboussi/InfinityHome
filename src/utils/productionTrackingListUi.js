@@ -68,6 +68,7 @@ export function productionTrackingSearchHaystack(row) {
     row?.quote_number,
     row?.return_number,
     row?.customer_name,
+    row?.customer_phone,
   ].filter(Boolean).join(' ').toLowerCase();
 }
 
@@ -153,8 +154,8 @@ function mergeFactoryTrackingGroup(rows) {
 }
 
 /**
- * Collapse duplicate factory rows (same product / quote line) and drop quote-order cards
- * when a factory job already tracks that quote (e.g. painting queue after carpentry).
+ * Collapse duplicate factory rows (same product / quote line). Keep quote-order cards
+ * so carpentry / upholstery Orders still match the portal when painting also has the quote.
  */
 export function collapseProductionTrackingDisplayRows(rows) {
   const list = Array.isArray(rows) ? rows : [];
@@ -179,21 +180,7 @@ export function collapseProductionTrackingDisplayRows(rows) {
     if (merged) collapsedFactory.push(merged);
   }
 
-  const quoteIdsOnFactory = new Set();
-  for (const row of collapsedFactory) {
-    const qid = String(row?.quote_id || '').trim();
-    if (qid) quoteIdsOnFactory.add(qid);
-  }
-
-  const filteredRest = nonFactory.filter((row) => {
-    const kind = String(row?.track_kind || '').trim().toLowerCase();
-    if (kind !== 'quote_order' && kind !== 'showroom_order') return true;
-    const qid = String(row?.quote_id || '').trim();
-    if (!qid) return true;
-    return !quoteIdsOnFactory.has(qid);
-  });
-
-  return sortProductionTrackingJobs([...filteredRest, ...collapsedFactory]);
+  return sortProductionTrackingJobs([...nonFactory, ...collapsedFactory]);
 }
 
 export function applyProductionTrackingFilters(rows, {

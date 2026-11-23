@@ -9,9 +9,8 @@ export default function WarehouseReturnsTrackage() {
         <BackToDashboard />
       </div>
       <ProductionJobsTrackingPanel
-        inProgressOnly
         title="Production tracking"
-        description="Active factory jobs only (upholstery, carpentry, painting). Completed work is hidden here — use the Jobs hub or workshop apps for history."
+        description="Latest factory jobs, quote orders, and repairs (carpentry, upholstery, painting). Completed work is hidden until you show it."
       />
     </div>
   );

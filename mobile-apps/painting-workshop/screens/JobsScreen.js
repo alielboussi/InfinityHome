@@ -49,6 +49,9 @@ import {
 import JobCompletedUnitsRow from '../shared/components/JobCompletedUnitsRow';
 import { alertProductionFinishDisposition } from '../shared/lib/productionFinishDispositionAlert';
 import ConfirmTypeOkModal from '../shared/components/ConfirmTypeOkModal';
+import { QuoteProductionOrderBadges } from '../shared/quoteProductionOrderUi';
+import { WorkshopJobInboxBadges } from '../shared/components/WorkshopInboxKindBadges';
+import ProductionProductImagePreviewModal from '../shared/components/ProductionProductImagePreviewModal';
 
 function resolvePaintingJobImage(job) {
   const fromQuote = Boolean(String(job?.carpentry_quote_id || job?.quote_id || '').trim());
@@ -92,8 +95,12 @@ function JobCard({
     sourceKey = invSource === 'floor1' ? 'paintingQueueBadgeCarpentryOrderFinished' : 'paintingQueueBadgeCarpentryOrder';
   }
   const thumb = resolvePaintingJobImage(job);
-  const showJobPhoto = Boolean(thumb) && !isCompleted;
+  const showJobPhoto = Boolean(thumb);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const sentBy = String(job.sent_by_alias || job.metadata?.sent_by_name || '').trim();
+  const showroom = job.showroom_order === true;
+  const customerName = String(job.customer_name || job.metadata?.customer_name || '').trim();
+  const customerPhone = String(job.customer_phone || job.metadata?.customer_phone || '').trim();
 
   return (
     <ProductionPressableHint
@@ -105,9 +112,24 @@ function JobCard({
       {fromQuote && String(job.quote_number || '').trim() ? (
         <Text style={styles.quoteBadgeRight}>{String(job.quote_number).trim()}</Text>
       ) : null}
+      <QuoteProductionOrderBadges
+        quote={job}
+        textAlign={textAlign}
+        tUi={tUi}
+        locale={locale}
+      />
+      <WorkshopJobInboxBadges job={job} locale={locale} textAlign={textAlign} tUi={tUi} />
       <Text style={[styles.kindChip, { alignSelf: 'center', textAlign: 'center' }]}>
         {tUi(sourceKey, locale)}
       </Text>
+      {showroom ? (
+        <Text style={styles.jobTitleCenter}>{tUi('showroomOrderDetailLabel', locale)}</Text>
+      ) : customerName ? (
+        <>
+          <Text style={styles.jobTitleCenter}>{textForDisplay(customerName, '—')}</Text>
+          {customerPhone ? <Text style={styles.jobMetaCenter}>{customerPhone}</Text> : null}
+        </>
+      ) : null}
       <View style={styles.productRow}>
         <View style={{ flex: 1 }}>
           <Text style={[styles.jobTitle, { textAlign }]}>{textForDisplay(job.product_name, '—')}</Text>
@@ -119,9 +141,17 @@ function JobCard({
           </Text>
         </View>
         {showJobPhoto ? (
-          <Image source={{ uri: thumb }} style={styles.thumbInline} resizeMode="cover" />
+          <Pressable onPress={() => setPreviewOpen(true)} accessibilityRole="imagebutton" accessibilityLabel="Enlarge photo">
+            <Image source={{ uri: thumb }} style={styles.thumbInline} resizeMode="cover" />
+          </Pressable>
         ) : null}
       </View>
+      <ProductionProductImagePreviewModal
+        visible={previewOpen}
+        imageUrl={thumb}
+        title={job.product_name || ''}
+        onClose={() => setPreviewOpen(false)}
+      />
       {sentBy ? (
         <Text style={[styles.jobMeta, { textAlign }]}>
           {tUi('paintingJobSentBy', locale)}: {textForDisplay(sentBy, '—')}
@@ -490,9 +520,6 @@ export default function JobsScreen({ navigation, route, allowed, accessHint, onR
             const row = item.row;
             return (
               <View>
-                <Text style={[styles.kindChip, styles.kindChipReturn, { alignSelf: textAlign === 'right' ? 'flex-end' : 'flex-start' }]}>
-                  {tUi('paintingQueueBadgeReturn', locale)}
-                </Text>
                 <RepairCard
                   row={row}
                   locale={locale}
@@ -594,6 +621,19 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   kindChipReturn: { color: theme.danger },
+  jobTitleCenter: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: theme.text,
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+  jobMetaCenter: {
+    fontSize: 14,
+    color: theme.muted,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
   jobCard: { marginBottom: 12 },
   quoteBadgeRight: {
     fontSize: 14,

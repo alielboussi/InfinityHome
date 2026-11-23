@@ -133,8 +133,12 @@ assert(
   'trackage page must use production-tracking-page layout',
 );
 assert(
-  read('src/WarehouseReturnsTrackage.js').includes('inProgressOnly'),
-  'trackage page must hide completed jobs',
+  read('src/components/ProductionJobsTrackingPanel.js').includes('Show completed jobs'),
+  'tracking panel must hide completed jobs behind a show button',
+);
+assert(
+  !read('src/WarehouseReturnsTrackage.js').includes('inProgressOnly'),
+  'trackage page must use the shared completed-jobs toggle, not a locked in-progress filter',
 );
 assert(
   !read('server/lib/warehouseReturnOrders.js').includes('trackageOnly) {\n    query = query.in'),

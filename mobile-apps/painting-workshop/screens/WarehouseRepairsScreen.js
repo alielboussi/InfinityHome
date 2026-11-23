@@ -26,6 +26,7 @@ import { isCompletedAwaitingDelivery } from '../shared/lib/deliveryAdminDisplayS
 import { theme } from '../shared/theme';
 import ProductionJobMaterialsModal from '../components/ProductionJobMaterialsModal';
 import RunningRepairElapsed from '../components/RunningRepairElapsed';
+import { WorkshopRepairKindBadge } from '../shared/components/WorkshopInboxKindBadges';
 
 
 
@@ -61,6 +62,7 @@ export function RepairCard({
 
   return (
     <View style={[kiosk.card, styles.card]}>
+      <WorkshopRepairKindBadge locale={locale} textAlign={textAlign} tUi={tUi} />
       <Text style={[styles.title, { textAlign }]}>{returnCardTitle(row)}</Text>
       {awaitingDelivery ? (
         <Text style={[styles.awaitingDeliveryChip, { textAlign }]}>

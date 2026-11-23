@@ -16,14 +16,14 @@ export default function ProductionJobsHubPage() {
   }, [searchParams]);
 
   return (
-    <div className="portal-hub-page">
+    <div className="portal-hub-page production-tracking-page">
       <div className="portal-hub-page__chrome page-header-row">
         <h1 style={{ margin: 0 }}>Jobs</h1>
       </div>
       <ProductionJobsTrackingPanel
         embedInHub
         initialDepartment={initialDepartment}
-        description="Every upholstery, carpentry, and painting job in one place. Filter by department; cards show product, qty, workshop stage, and elapsed time (materials are not shown)."
+        description="Latest upholstery, carpentry, and painting jobs — same queues as the workshop apps. Cards show customer / showroom / repair badges and which department the work is in. Completed jobs stay hidden until you show them."
       />
     </div>
   );

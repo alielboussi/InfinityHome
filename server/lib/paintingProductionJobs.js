@@ -84,10 +84,35 @@ async function loadCarpentryQuoteDisplayBundle(sb, quoteId) {
     name: quoteLineDisplayName(it, productById),
     description: String(it?.description || productById.get(String(it?.quote_product_id))?.description || '').trim() || it?.description,
   }));
+  let routingMeta = {};
+  try {
+    const { getQuoteProductionRouting } = await import('./quoteProductionRouting.js');
+    const routing = await getQuoteProductionRouting(sb, qid);
+    routingMeta = routing?.metadata && typeof routing.metadata === 'object' ? routing.metadata : {};
+  } catch {
+    routingMeta = {};
+  }
+  const showroom = routingMeta.showroom_order === true;
+  const customer_name = showroom ? '' : String(routingMeta.customer_name || '').trim();
+  const customer_phone = showroom ? '' : String(routingMeta.customer_phone || '').trim();
   return {
     quote_number: quote.quote_number || null,
     product_title: formatCarpentryQuoteProductTitle(list, { quoteNumber: quote.quote_number }),
     line_image_url: firstQuoteLineImageUrl(list),
+    customer_name,
+    customer_phone,
+    showroom_order: showroom,
+    customer_order: !showroom && Boolean(customer_name),
+  };
+}
+
+function quoteCustomerMeta(bundle) {
+  if (!bundle) return {};
+  return {
+    customer_name: String(bundle.customer_name || '').trim() || null,
+    customer_phone: String(bundle.customer_phone || '').trim() || null,
+    showroom_order: bundle.showroom_order === true,
+    customer_order: bundle.customer_order === true,
   };
 }
 
@@ -156,6 +181,10 @@ async function enrichPaintingJobsFromCarpentryQuotes(sb, jobs) {
       quote_line_image_url: quoteImg || null,
       image_url: quoteImg ? quoteImg : job.image_url,
       floor2_image_url: quoteImg ? quoteImg : job.floor2_image_url,
+      customer_name: job.customer_name || bundle.customer_name || '',
+      customer_phone: job.customer_phone || bundle.customer_phone || '',
+      showroom_order: job.showroom_order === true || bundle.showroom_order === true,
+      customer_order: job.customer_order === true || bundle.customer_order === true,
     };
   });
 }
@@ -295,6 +324,17 @@ function serializeJob(job) {
   if (!job) return null;
   const qty = Math.max(1, Math.floor(Number(job.product_qty) || 1));
   const checked = jobCheckedUnits(job);
+  const meta = job.metadata && typeof job.metadata === 'object' ? job.metadata : {};
+  const quoteId = String(meta.carpentry_quote_id || meta.quote_id || '').trim();
+  const showroom = job.showroom_order === true || meta.showroom_order === true;
+  const customerName = String(job.customer_name || meta.customer_name || '').trim();
+  const customerPhone = String(job.customer_phone || meta.customer_phone || '').trim();
+  const customerOrder = !showroom && (
+    job.customer_order === true || meta.customer_order === true || Boolean(customerName)
+  );
+  const catalogManufacture = meta.catalog_manufacture === true
+    || job.catalog_manufacture === true
+    || (!quoteId && String(meta.inventory_source || '').toLowerCase() === 'floor2');
   return {
     job_id: job.id,
     id: job.id,
@@ -305,6 +345,11 @@ function serializeJob(job) {
     checked_unit_indexes: checked,
     units_checked: checked.length,
     all_units_checked: checked.length >= qty,
+    customer_name: customerName,
+    customer_phone: customerPhone,
+    showroom_order: showroom,
+    customer_order: customerOrder,
+    catalog_manufacture: catalogManufacture,
     status: job.status,
     accumulated_ms: Number(job.accumulated_ms) || 0,
     elapsed_ms: computeElapsedMs(job),
@@ -413,6 +458,7 @@ export async function sendAssemblyToPaintingDepartment(sb, {
     metadata: {
       channel,
       inventory_source: 'floor2',
+      catalog_manufacture: true,
       floor2_deducted_qty: qty,
       floor2_location_id: floor2LocationId,
       sent_by_name: sentByName,
@@ -521,6 +567,7 @@ export async function sendCarpentryQuoteToPaintingDepartment(sb, {
       quote_id: qid,
       quote_number: quoteDisplay?.quote_number || null,
       quote_line_image_url: quoteDisplay?.line_image_url || null,
+      ...quoteCustomerMeta(quoteDisplay),
       inventory_source,
       floor2_deducted_qty: inventory_source === 'floor2' ? qty : 0,
       factory_deducted_qty: inventory_source === 'floor1' ? qty : 0,
@@ -620,6 +667,7 @@ export async function sendPartialCarpentryQuoteLineToPainting(sb, {
   }
 
   const ctx = await loadPaintingProductContext(sb, assemblyId);
+  const quoteDisplay = await loadCarpentryQuoteDisplayBundle(sb, qid);
   const now = new Date().toISOString();
   const sentByName = await paintingSenderNameForUserId(userId);
   const jobId = newUuid();
@@ -639,8 +687,10 @@ export async function sendPartialCarpentryQuoteLineToPainting(sb, {
       channel: 'carpentry_workshop_app',
       carpentry_quote_id: qid,
       quote_id: qid,
+      quote_number: quoteDisplay?.quote_number || null,
       quote_line_id: iid,
       partial_quote_line: true,
+      ...quoteCustomerMeta(quoteDisplay),
       inventory_source,
       floor2_deducted_qty: inventory_source === 'floor2' ? qty : 0,
       factory_deducted_qty: inventory_source === 'floor1' ? qty : 0,
@@ -716,6 +766,10 @@ export async function listPaintingProductionJobs(sb, { activeOnly = false, limit
         quote_id: qid,
         quote_number: job.quote_number || meta.quote_number || null,
         quote_line_image_url: job.quote_line_image_url || meta.quote_line_image_url || null,
+        customer_name: job.customer_name || meta.customer_name || null,
+        customer_phone: job.customer_phone || meta.customer_phone || null,
+        showroom_order: job.showroom_order === true || meta.showroom_order === true,
+        customer_order: job.customer_order === true || meta.customer_order === true,
       },
       updated_at: now,
     }).eq('id', row.id);

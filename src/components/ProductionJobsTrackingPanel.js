@@ -19,7 +19,7 @@ import {
 function trackingRowAsQuote(row) {
   const quote = {
     showroom_order: row?.showroom_order === true || row?.track_kind === 'showroom_order',
-    customer_order: row?.customer_order === true,
+    customer_order: row?.customer_order === true || Boolean(String(row?.customer_name || '').trim()),
     track_kind: row?.track_kind,
   };
   if (quote.showroom_order) quote.customer_order = false;
@@ -31,10 +31,11 @@ function trackingRowAsQuote(row) {
 
 function trackingKindLabel(row) {
   const k = String(row?.track_kind || 'factory').toLowerCase();
-  if (k === 'showroom_order' || k === 'showroom') return 'Showroom order';
-  if (k === 'quote_order' || k === 'quote') return 'Quote order';
+  if (k === 'showroom_order' || k === 'showroom' || row?.showroom_order === true) return 'Showroom order';
   if (k === 'repair') return 'Repair';
-  return 'Factory job';
+  if (k === 'quote_order' || k === 'quote' || row?.customer_order === true) return 'Customer order';
+  if (row?.catalog_manufacture === true) return 'Production';
+  return 'Production';
 }
 
 function TrackingDetailLine({ label, value, always = false }) {
@@ -67,7 +68,11 @@ function ProductionTrackingCard({ row, onApproveFloor1, approveBusyId }) {
       className={`production-tracking-card${completed ? ' production-tracking-card--completed' : ''}`}
     >
       <div className="production-tracking-card__badges">
-        {showCustomerShowroom ? (
+        {String(row?.track_kind || '').toLowerCase() === 'repair' ? (
+          <span className="production-tracking-card__type-badge production-tracking-card__type-badge--repair">
+            Repair
+          </span>
+        ) : showCustomerShowroom ? (
           isProductionQuoteShowroomOrder(quoteShape) ? (
             <span className="production-tracking-card__type-badge production-tracking-card__type-badge--showroom quotation-customer-order-badge">
               Showroom order
@@ -98,6 +103,7 @@ function ProductionTrackingCard({ row, onApproveFloor1, approveBusyId }) {
         {refLine ? <TrackingDetailLine label="Reference" value={refLine} always /> : null}
         {productLine ? <TrackingDetailLine label="Product" value={productLine} always /> : null}
         {row.customer_name ? <TrackingDetailLine label="Customer" value={row.customer_name} /> : null}
+        {row.customer_phone ? <TrackingDetailLine label="Phone" value={row.customer_phone} /> : null}
         <TrackingDetailLine
           label="Started"
           value={row.started_at ? formatWarehouseAdminDateTime(row.started_at) : ''}
@@ -147,17 +153,16 @@ export default function ProductionJobsTrackingPanel({
   description,
   embedInHub = false,
   initialDepartment = 'all',
-  defaultProgress = 'all',
+  defaultProgress = 'in_progress',
   inProgressOnly = false,
 }) {
-  const resolvedDefaultProgress = inProgressOnly ? 'in_progress' : defaultProgress;
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [department, setDepartment] = useState(initialDepartment || 'all');
   const [trackKind, setTrackKind] = useState('all');
-  const [progress, setProgress] = useState(resolvedDefaultProgress);
+  const [showCompleted, setShowCompleted] = useState(defaultProgress === 'all' && !inProgressOnly);
   const [approveBusyId, setApproveBusyId] = useState('');
 
   const load = useCallback(async () => {
@@ -200,20 +205,30 @@ export default function ProductionJobsTrackingPanel({
     search,
     department,
     trackKind,
-    progress,
-  }), [rows, search, department, trackKind, progress]);
+    progress: showCompleted ? 'all' : 'in_progress',
+  }), [rows, search, department, trackKind, showCompleted]);
+
+  const completedHiddenCount = useMemo(() => {
+    const all = applyProductionTrackingFilters(rows, {
+      search,
+      department,
+      trackKind,
+      progress: 'all',
+    });
+    return partitionProductionTrackingJobs(all).completed.length;
+  }, [rows, search, department, trackKind]);
 
   const { inProgress, completed } = useMemo(
     () => partitionProductionTrackingJobs(filtered),
     [filtered],
   );
 
-  const showProgressSections = progress === 'all' && inProgress.length > 0 && completed.length > 0;
+  const showProgressSections = showCompleted && inProgress.length > 0 && completed.length > 0;
 
   const clearFilters = () => {
     setDepartment('all');
     setTrackKind('all');
-    setProgress(resolvedDefaultProgress);
+    setShowCompleted(false);
   };
 
   return (
@@ -234,13 +249,22 @@ export default function ProductionJobsTrackingPanel({
         <ProductionTrackingFunnelFilter
           department={department}
           trackKind={trackKind}
-          progress={progress}
-          hideProgressFilter={inProgressOnly}
+          progress={showCompleted ? 'all' : 'in_progress'}
+          hideProgressFilter
           onDepartmentChange={setDepartment}
           onTrackKindChange={setTrackKind}
-          onProgressChange={setProgress}
+          onProgressChange={() => {}}
           onClear={clearFilters}
         />
+        <button
+          type="button"
+          className="product-form-btn"
+          onClick={() => setShowCompleted((v) => !v)}
+        >
+          {showCompleted
+            ? 'Hide completed jobs'
+            : `Show completed jobs${completedHiddenCount ? ` (${completedHiddenCount})` : ''}`}
+        </button>
       </div>
 
       {loading && <div>Loading jobs…</div>}
