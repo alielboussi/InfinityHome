@@ -15,8 +15,7 @@ Deploy API changes, then confirm `locations` contains `Farm Warehouse 1`.
 | App | Screen | Purpose |
 |-----|--------|---------|
 | Warehouse Catalog | **Farm Warehouse 1** | View grid; optional **stock increase** per location flag |
-| Delivery | **Send to Farm** | Floor 2 → Farm transfer with driver signature + FRM A4 |
-| Delivery | **Send to Warehouse** | Farm → Floor 2; driver signature; **WhatsApp share only** (no A4) |
+| Delivery | **Farm deliveries** (`delivery_farm`) | One page: **From** Farm Warehouse 1 only → **To** Floor 2 WIP (auto credit + Zebra labels) or Kitwe `/kitwe-products` (Hassan accept, Farm badge, no labels). Driver + signature. WhatsApp PDF required before leaving. |
 
 ## Delivery notes
 
@@ -24,11 +23,16 @@ Deploy API changes, then confirm `locations` contains `Farm Warehouse 1`.
 - Print layout: same A4 delivery note HTML as Floor 1 send (`documentKind: farm_delivery`)
 - Timestamps on print: Zambia (CAT, GMT+2) via existing `formatZambiaDate` / `formatZambiaTime`
 
-## Send to Farm flow (Delivery app)
+## Farm deliveries (Delivery app)
 
-1. **Same Send Delivery UI** as Floor 1 (packet BOM checks, sets, cart) via `farm-delivery-catalog` (stock bound to **Floor 2**).
-2. Submit uses **`farm-delivery-submit`** with `groups` — server runs the same logic as `delivery-submit`, deducting **Floor 2** packet/finished stock and crediting **Farm Warehouse 1**.
-3. FRM delivery note + driver signature (no customer driver).
+One dashboard tile → `WarehouseFromFarmHome`. Source is always Farm Warehouse 1. Destination is **Floor 2 WIP** or **Kitwe**.
+
+1. Catalog is farm on-hand (`farm-return-catalog`). Cart deducts Farm stock on submit (`farm-return-submit`).
+2. **Floor 2:** session completes immediately; Floor 2 WIP qty is credited (existing SKU or new assembly line); Zebra prints name, SKU, Code 128, product-image QR, send date.
+3. **Kitwe:** session stays submitted until Hassan Awad accepts on Warehouse Deliveries (Farm badge). Accept credits Kitwe and mirrors `/kitwe-products` (`findOrCreateKitweProduct`). No Zebra print.
+4. Fleet driver + signature required. Done screen forces system share of the A4 PDF (WhatsApp) before returning to the dashboard.
+
+Floor 2 → Farm (old Send to Farm) is not on this tile.
 
 ## Verification
 

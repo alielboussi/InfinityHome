@@ -22,6 +22,7 @@ export default function WarehouseFromFarmSignatureScreen({ route, navigation }) 
   const transferRef = route.params?.transferRef || '';
   const lines = route.params?.lines || [];
   const shareGroups = route.params?.shareGroups || [];
+  const creditDestination = route.params?.creditDestination || '';
   const dispatchedByName = route.params?.dispatchedByName
     || getProductionDispatcherLabelSync()
     || '';
@@ -86,6 +87,7 @@ export default function WarehouseFromFarmSignatureScreen({ route, navigation }) 
         signature_png_base64: dataUri,
         lines,
         share_groups: shareGroups,
+        credit_destination: creditDestination,
       });
 
       navigation.replace('WarehouseFromFarmDone', {
@@ -93,7 +95,12 @@ export default function WarehouseFromFarmSignatureScreen({ route, navigation }) 
         driverName,
         dispatchedByName: submitResult?.dispatched_by_name || dispatchedByName,
         shareGroups: submitResult?.share_groups || shareGroups,
+        printGroups: submitResult?.print_groups || shareGroups,
         submittedAt: submitResult?.submitted_at || new Date().toISOString(),
+        driverSignatureDataUri: dataUri,
+        driverSignatureUrl: submitResult?.driver_signature_url || '',
+        documentKind: 'farm_return',
+        creditDestination: submitResult?.credit_destination || creditDestination,
       });
     } catch (err) {
       const msg = formatWarehouseMobileApiError(err?.message, tUi('deliverySubmitFailed', locale));
@@ -114,6 +121,7 @@ export default function WarehouseFromFarmSignatureScreen({ route, navigation }) 
     sessionId,
     sigValid,
     transferRef,
+    creditDestination,
   ]);
 
   const sortedDrivers = sortDeliveryDriversByName(drivers || []);

@@ -48,7 +48,7 @@ function lineTextIndentStyle(textAlign) {
   return rtl ? { marginRight: 34, marginLeft: 0 } : { marginLeft: 34, marginRight: 0 };
 }
 
-export function QuoteLineReferenceImage({ line, textAlign, tUi, locale }) {
+export function QuoteLineReferenceImage({ line, textAlign, tUi, locale, compactRight = false }) {
   const [open, setOpen] = useState(false);
   const url = lineImageUrl(normalizeProductionQuoteLine(line));
   if (!url) return null;
@@ -56,10 +56,12 @@ export function QuoteLineReferenceImage({ line, textAlign, tUi, locale }) {
     <>
       <Pressable
         onPress={() => setOpen(true)}
-        style={[styles.thumbWrap, lineBodyAlignStyle(textAlign)]}
+        style={compactRight ? styles.thumbWrapInline : [styles.thumbWrap, lineBodyAlignStyle(textAlign)]}
       >
-        <Image source={{ uri: url }} style={styles.thumb} resizeMode="cover" />
-        <Text style={[styles.thumbHint, { textAlign }]}>{tUi('quoteLineImageEnlarge', locale)}</Text>
+        <Image source={{ uri: url }} style={compactRight ? styles.thumbInline : styles.thumb} resizeMode="cover" />
+        {compactRight ? null : (
+          <Text style={[styles.thumbHint, { textAlign }]}>{tUi('quoteLineImageEnlarge', locale)}</Text>
+        )}
       </Pressable>
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setOpen(false)}>
@@ -235,7 +237,7 @@ export function QuoteProductionWorkshopLineRows({
         );
         const displayQty = remaining > 0 ? remaining : ordered;
         const qtyUnit = String(row.unit_abbr || row.unit || '').trim();
-        const nameShown = displayQuoteFieldValue(locale, row.name, arabicMap);
+        const nameShown = String(row.name || '').trim();
         const qtyLead =
           locale === 'ar'
             ? formatQuoteLineQtyLabel(displayQty, qtyUnit, locale, arabicMap) || String(displayQty)
@@ -258,18 +260,24 @@ export function QuoteProductionWorkshopLineRows({
                 <View style={styles.checkBoxSpacer} />
               )}
               <Text style={[styles.lineMain, { textAlign, flex: 1 }]}>{title}</Text>
+              <QuoteLineReferenceImage
+                line={row}
+                textAlign={textAlign}
+                tUi={tUi}
+                locale={locale}
+                compactRight
+              />
             </View>
             {completed > 0 ? (
               <Text style={[styles.progress, lineTextIndentStyle(textAlign), { textAlign }]}>
-                {completed} / {ordered} {tUi('quoteLineProgress', locale)}
+                {tUi('quoteLineCompletedQty', locale)}: {completed}
               </Text>
             ) : null}
             {remaining > 0 && completed > 0 ? (
               <Text style={[styles.remaining, lineTextIndentStyle(textAlign), { textAlign }]}>
-                {tUi('quoteLineRemaining', locale)}: {remaining}
+                {tUi('quoteLineRemainingQty', locale)}: {remaining}
               </Text>
             ) : null}
-            <QuoteLineReferenceImage line={row} textAlign={textAlign} tUi={tUi} locale={locale} />
             <QuoteProductionLineExtras
               line={row}
               route={route}
@@ -361,7 +369,7 @@ export function QuoteProductionWorkshopLineRows({
 
 const styles = StyleSheet.create({
   lineBlock: { marginBottom: 14 },
-  lineTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  lineTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   lineMain: { color: theme.textSecondary, fontSize: 15, fontWeight: '600' },
   progress: { color: theme.primary, fontSize: 13, fontWeight: '700', marginTop: 4 },
   remaining: { color: theme.textMuted, fontSize: 12, marginTop: 2 },
@@ -375,7 +383,9 @@ const styles = StyleSheet.create({
   },
   checkBoxSpacer: { width: 22 },
   thumbWrap: { marginTop: 8 },
+  thumbWrapInline: { marginTop: 0 },
   thumb: { width: 72, height: 72, borderRadius: 8, backgroundColor: '#1e293b' },
+  thumbInline: { width: 56, height: 56, borderRadius: 8, backgroundColor: '#1e293b' },
   thumbHint: { color: theme.textMuted, fontSize: 11, marginTop: 4 },
   modalBackdrop: {
     flex: 1,

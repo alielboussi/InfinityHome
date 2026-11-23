@@ -8,6 +8,7 @@ import { adjustAssemblyStock, getAssemblyStockQty } from './warehouseReturnStock
 import { recomputeWarehouseLocationStockServer } from './warehouseLocationStockRecompute.js';
 import { newUuid } from './uuid.js';
 import { ensureFarmWarehouseLocation } from './ensureFarmWarehouseLocation.js';
+import { KITWE_LOCATION_ID } from '../../src/constants/warehouseShowroomLocations.js';
 
 export async function resolveFarmWarehouseIds(sb) {
   const { data: locRows, error } = await sb.from('locations').select('id, name');
@@ -329,6 +330,7 @@ export async function farmReturnCatalog(sb) {
     farm_qty: row.farm_qty,
     floor2_qty: row.floor2_qty,
     floor2_image_url: row.floor2_image_url,
+    image_url: row.floor2_image_url,
   }));
   return { products, farm_location_id: farmId, floor2_location_id: floor2Id };
 }
@@ -386,7 +388,8 @@ export async function openFarmReturnSession(sb, user, email) {
 }
 
 /**
- * Farm → Floor 2 finished lines (driver + signature; WhatsApp share only — no A4 print).
+ * Farm → Floor 2 WIP (auto credit) or Farm → Kitwe (credit on Hassan accept).
+ * Driver + signature required. A4 PDF + WhatsApp share from the app.
  */
 export async function submitFarmReturnDelivery(sb, body, user) {
   const sessionId = String(body.session_id || body.sessionId || '').trim();
@@ -396,8 +399,14 @@ export async function submitFarmReturnDelivery(sb, body, user) {
   const signatureUrl = String(body.signature_url || body.signatureUrl || '').trim();
   const signatureBase64 = String(body.signature_png_base64 || body.signaturePngBase64 || '').trim();
   if (!signatureUrl && !signatureBase64) throw new Error('Driver signature is required.');
+  const destRaw = String(body.credit_destination || body.destination || '').trim().toLowerCase();
+  if (destRaw !== 'floor2' && destRaw !== 'kitwe') {
+    throw new Error('Choose Floor 2 WIP or Kitwe as the destination.');
+  }
+  const toKitwe = destRaw === 'kitwe';
 
   const { floor2Id, farmId } = await resolveFarmWarehouseIds(sb);
+  const creditLocationId = toKitwe ? KITWE_LOCATION_ID : floor2Id;
   const { data: session, error: sErr } = await sb
     .from('warehouse_delivery_sessions')
     .select('*')
@@ -406,7 +415,11 @@ export async function submitFarmReturnDelivery(sb, body, user) {
   if (sErr) throw new Error(sErr.message || 'Failed to load session');
   if (!session) throw new Error('Transfer session not found.');
   if (String(session.status) !== 'draft') throw new Error('This transfer was already submitted.');
-  if (String(session.from_location) !== farmId || String(session.to_location) !== floor2Id) {
+  if (String(session.from_location) !== farmId) {
+    throw new Error('Not a Farm Warehouse transfer session.');
+  }
+  const sessionTo = String(session.to_location || '');
+  if (sessionTo && sessionTo !== floor2Id && sessionTo !== KITWE_LOCATION_ID) {
     throw new Error('Not a Farm → Warehouse transfer session.');
   }
 
@@ -435,7 +448,9 @@ export async function submitFarmReturnDelivery(sb, body, user) {
 
   for (const line of lines) {
     await adjustAssemblyStock(sb, line.assembly_id, farmId, -line.quantity);
-    await adjustAssemblyStock(sb, line.assembly_id, floor2Id, line.quantity);
+    if (!toKitwe) {
+      await adjustAssemblyStock(sb, line.assembly_id, floor2Id, line.quantity);
+    }
     totalQty += line.quantity;
     const entryId = newUuid();
     entries.push({
@@ -451,9 +466,12 @@ export async function submitFarmReturnDelivery(sb, body, user) {
         units: line.quantity,
         driver_checked: true,
         driver_checked_at: now,
-        received_at: now,
+        receiver_checked_at: toKitwe ? null : now,
+        received_at: toKitwe ? null : now,
+        source_stock_deducted_at: now,
         stock_deduct_location_id: farmId,
-        stock_credit_location_id: floor2Id,
+        stock_credit_location_id: creditLocationId,
+        credit_destination: destRaw,
       },
     });
     shareGroups.push({
@@ -463,10 +481,9 @@ export async function submitFarmReturnDelivery(sb, body, user) {
     });
   }
 
-  await Promise.all([
-    recomputeWarehouseLocationStockServer(sb, floor2Id),
-    recomputeWarehouseLocationStockServer(sb, farmId),
-  ]);
+  const recomputeIds = [farmId];
+  if (!toKitwe) recomputeIds.push(floor2Id);
+  await Promise.all(recomputeIds.map((loc) => recomputeWarehouseLocationStockServer(sb, loc)));
 
   const { error: entErr } = await sb.from('warehouse_delivery_entries').insert(entries);
   if (entErr) throw new Error(entErr.message || 'Failed to save transfer lines');
@@ -489,36 +506,74 @@ export async function submitFarmReturnDelivery(sb, body, user) {
   const metadata = {
     ...(session.metadata || {}),
     document_kind: 'farm_return',
+    delivery_flow: 'farm_return',
+    farm_to_kitwe: toKitwe,
+    farm_to_floor2: !toKitwe,
+    credit_destination: destRaw,
     driver_name: driverName,
     driver_signature_url: resolvedSignatureUrl,
     dispatched_by_name: dispatchedBy,
     share_groups: shareGroups,
+    print_groups: shareGroups,
     submitted_at: now,
-    skip_print: true,
+    skip_print: false,
+    hassan_alert_pending: toKitwe,
+    hassan_alert_at: toKitwe ? now : undefined,
   };
 
   const { error: updErr } = await sb
     .from('warehouse_delivery_sessions')
     .update({
-      status: 'submitted',
+      status: toKitwe ? 'submitted' : 'completed',
       submitted_at: now,
+      completed_at: toKitwe ? null : now,
       transfer_datetime: now,
       total_qty: totalQty,
+      to_location: creditLocationId,
       metadata,
     })
     .eq('id', sessionId);
   if (updErr) throw new Error(updErr.message || 'Failed to submit farm return');
+
+  let labelJobIds = [];
+  if (!toKitwe) {
+    const { enqueueWarehouseProductionLabelJob } = await import('./productionLabelPrint.js');
+    const { LABEL_PHOTO_FLOOR2 } = await import('./warehouseLabelPhotoFloor.js');
+    for (const line of lines) {
+      const sku = String(line.sku || '').trim();
+      const name = String(line.name || sku).trim();
+      if (!sku || !name) continue;
+      try {
+        const id = await enqueueWarehouseProductionLabelJob(sb, {
+          name,
+          sku,
+          qty: line.quantity,
+          printedBy: dispatchedBy || 'Farm delivery',
+          source: 'farm_to_floor2',
+          printedAt: now,
+          photoFloor: LABEL_PHOTO_FLOOR2,
+        });
+        if (id) labelJobIds.push(id);
+      } catch (labelErr) {
+        console.warn('[farmWarehouseDelivery] Floor 2 label failed:', labelErr?.message || labelErr);
+      }
+    }
+  }
 
   return {
     session_id: sessionId,
     transfer_ref: session.delivery_number,
     total_qty: totalQty,
     share_groups: shareGroups,
+    print_groups: shareGroups,
     driver_name: driverName,
     dispatched_by_name: dispatchedBy,
     driver_signature_url: resolvedSignatureUrl,
     submitted_at: now,
     document_kind: 'farm_return',
+    credit_destination: destRaw,
+    label_job_ids: labelJobIds,
+    labels_printed: !toKitwe,
   };
 }
 

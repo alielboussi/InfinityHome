@@ -108,8 +108,17 @@ export async function fetchProductionQuoteArabicTranslations(texts = []) {
   }
 }
 
-export async function acceptCarpentryQuote(quoteId) {
-  return warehouseMobileRequest('production-quote-accept', { route: CARPENTRY_ROUTE, quote_id: quoteId });
+function quoteCardPayload(productionLineSet) {
+  const set = String(productionLineSet || '').trim();
+  return set ? { production_line_set: set } : {};
+}
+
+export async function acceptCarpentryQuote(quoteId, { productionLineSet = null } = {}) {
+  return warehouseMobileRequest('production-quote-accept', {
+    route: CARPENTRY_ROUTE,
+    quote_id: quoteId,
+    ...quoteCardPayload(productionLineSet),
+  });
 }
 
 export async function completeCarpentryQuote(quoteId, {
@@ -117,6 +126,7 @@ export async function completeCarpentryQuote(quoteId, {
   destination = 'delivery',
   sendToPainting = false,
   productQty = 1,
+  productionLineSet = null,
 } = {}) {
   const dest = String(destination || 'delivery').toLowerCase() === 'floor1' ? 'floor1' : 'delivery';
   return warehouseMobileRequest('production-quote-complete', {
@@ -126,20 +136,23 @@ export async function completeCarpentryQuote(quoteId, {
     destination: deferDeliveryQueue || sendToPainting ? 'delivery' : dest,
     send_to_painting: Boolean(sendToPainting),
     product_qty: Math.max(1, Math.floor(Number(productQty) || 1)),
+    ...quoteCardPayload(productionLineSet),
   });
 }
 
-export async function pauseCarpentryQuote(quoteId) {
+export async function pauseCarpentryQuote(quoteId, { productionLineSet = null } = {}) {
   return warehouseMobileRequest('production-quote-pause', {
     route: CARPENTRY_ROUTE,
     quote_id: quoteId,
+    ...quoteCardPayload(productionLineSet),
   });
 }
 
-export async function resumeCarpentryQuote(quoteId) {
+export async function resumeCarpentryQuote(quoteId, { productionLineSet = null } = {}) {
   return warehouseMobileRequest('production-quote-resume', {
     route: CARPENTRY_ROUTE,
     quote_id: quoteId,
+    ...quoteCardPayload(productionLineSet),
   });
 }
 
@@ -150,12 +163,13 @@ export async function sendCarpentryQuoteToPainting(quoteId, { productQty = 1 } =
   });
 }
 
-export async function markCarpentryQuoteLineReady(quoteId, itemId, readyQty) {
+export async function markCarpentryQuoteLineReady(quoteId, itemId, readyQty, { productionLineSet = null } = {}) {
   return warehouseMobileRequest('production-quote-line-ready', {
     route: CARPENTRY_ROUTE,
     quote_id: quoteId,
     item_id: itemId,
     ready_qty: readyQty,
+    ...quoteCardPayload(productionLineSet),
   });
 }
 

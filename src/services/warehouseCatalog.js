@@ -35,6 +35,8 @@ import { cacheClear, cacheGet, cacheSet } from '../utils/staleCache';
 import { buildWarehouseCategoryIndex } from '../utils/warehouseCategoryLookup.js';
 import { resolveSeaterSetCoverImageUrl } from '../utils/warehouseSeaterSetCoverImage.js';
 import { applyWarehouseSetQuantityFromRecipe } from '../utils/warehouseSetAssemblyQty.js';
+import { WAREHOUSE_CATALOG_ROLE } from '../utils/warehouseAccessoryCatalog.js';
+import { resolveWarehouseFloor2Location } from '../constants/warehouseFloorLocations.js';
 
 const WAREHOUSE_CATALOG_CACHE_KEY = 'warehouse:catalog:v2';
 
@@ -666,6 +668,19 @@ export async function saveWarehouseAssembly(payload, { id, excludePacketId } = {
     }).select('*').single();
     if (error) throw new Error(error.message || 'Failed to create product');
     assemblyId = data.id;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload || {}, 'accessory_subcategory_ids')) {
+    const { data: existingMeta } = await db.from(ASSEMBLIES).select('metadata').eq('id', assemblyId).maybeSingle();
+    const ids = [...new Set((payload.accessory_subcategory_ids || []).map((v) => String(v || '').trim()).filter(Boolean))];
+    const { error: accErr } = await db.from(ASSEMBLIES).update({
+      metadata: {
+        ...(existingMeta?.metadata && typeof existingMeta.metadata === 'object' ? existingMeta.metadata : {}),
+        accessory_subcategory_ids: ids,
+      },
+      updated_at: new Date().toISOString(),
+    }).eq('id', assemblyId);
+    if (accErr) throw new Error(accErr.message || 'Failed to save product accessory subcategories');
   }
 
   await syncAssemblyLocations(assemblyId, locationIds);
@@ -1321,6 +1336,20 @@ export async function patchWarehouseAssemblyFields(assemblyId, fields) {
     patch.category_id = cid == null || cid === '' ? null : String(cid);
   }
 
+  if (Object.prototype.hasOwnProperty.call(fields || {}, 'accessory_subcategory_ids')) {
+    const { data: existingMeta, error: metaErr } = await db
+      .from(ASSEMBLIES)
+      .select('metadata')
+      .eq('id', id)
+      .maybeSingle();
+    if (metaErr) throw new Error(metaErr.message || 'Failed to load product metadata');
+    const ids = [...new Set((fields.accessory_subcategory_ids || []).map((v) => String(v || '').trim()).filter(Boolean))];
+    patch.metadata = {
+      ...(existingMeta?.metadata && typeof existingMeta.metadata === 'object' ? existingMeta.metadata : {}),
+      accessory_subcategory_ids: ids,
+    };
+  }
+
   Object.entries(fields || {}).forEach(([key, raw]) => {
     if (!INLINE_ASSEMBLY_NUMERIC_FIELDS.has(key)) return;
     if (raw === '' || raw == null) {
@@ -1338,4 +1367,102 @@ export async function patchWarehouseAssemblyFields(assemblyId, fields) {
   if (error) throw new Error(error.message || 'Failed to update product');
   invalidateWarehouseCatalogCache();
   return { id, ...patch };
+}
+
+export async function saveWarehouseAccessorySubcategory(rawName) {
+  const name = titleCaseWords(String(rawName || '').trim());
+  if (!name) throw new Error('Subcategory name is required.');
+  const { data: existing, error: loadErr } = await db
+    .from(ASSEMBLIES)
+    .select('id, name, metadata')
+    .contains('metadata', { catalog_role: WAREHOUSE_CATALOG_ROLE.ACCESSORY_SUBCATEGORY });
+  if (loadErr) {
+    const { data: all, error: allErr } = await db.from(ASSEMBLIES).select('id, name, metadata');
+    if (allErr) throw new Error(allErr.message || 'Failed to load accessory subcategories');
+    const match = (all || []).find((row) => {
+      const role = String(row?.metadata?.catalog_role || '').toLowerCase();
+      return role === WAREHOUSE_CATALOG_ROLE.ACCESSORY_SUBCATEGORY
+        && String(row.name || '').trim().toLowerCase() === name.toLowerCase();
+    });
+    if (match) return match;
+  } else {
+    const match = (existing || []).find(
+      (row) => String(row.name || '').trim().toLowerCase() === name.toLowerCase(),
+    );
+    if (match) return match;
+  }
+
+  const sku = await generateUniqueWarehouseSku();
+  const now = new Date().toISOString();
+  const { data, error } = await db.from(ASSEMBLIES).insert({
+    name,
+    family_sku: sku,
+    item_kind: WAREHOUSE_ITEM_KIND.PRODUCT,
+    inventory_mode: WAREHOUSE_INVENTORY_MODE.FINISHED,
+    packet_count: null,
+    units_per_carton: 1,
+    metadata: { catalog_role: WAREHOUSE_CATALOG_ROLE.ACCESSORY_SUBCATEGORY },
+    created_at: now,
+    updated_at: now,
+  }).select('*').single();
+  if (error) throw new Error(error.message || 'Failed to create accessory subcategory');
+  invalidateWarehouseCatalogCache();
+  return data;
+}
+
+export async function saveWarehouseAccessory({
+  name,
+  qty = 0,
+  subcategoryId,
+  subcategoryName,
+  imageFile = null,
+  floor = '1',
+} = {}) {
+  const title = titleCaseWords(String(name || '').trim());
+  if (!title) throw new Error('Accessory name is required.');
+  const sid = String(subcategoryId || '').trim();
+  if (!sid) throw new Error('Choose an accessory subcategory.');
+  const sku = await generateUniqueWarehouseSku();
+  const now = new Date().toISOString();
+  const quantity = Math.max(0, Math.floor(Number(qty) || 0));
+  const { data, error } = await db.from(ASSEMBLIES).insert({
+    name: title,
+    family_sku: sku,
+    item_kind: WAREHOUSE_ITEM_KIND.PRODUCT,
+    inventory_mode: WAREHOUSE_INVENTORY_MODE.FINISHED,
+    packet_count: null,
+    units_per_carton: 1,
+    metadata: {
+      catalog_role: WAREHOUSE_CATALOG_ROLE.ACCESSORY,
+      accessory_subcategory_id: sid,
+      accessory_subcategory_name: String(subcategoryName || '').trim(),
+    },
+    created_at: now,
+    updated_at: now,
+  }).select('*').single();
+  if (error) throw new Error(error.message || 'Failed to create accessory');
+  const assemblyId = data.id;
+
+  const { data: locRows } = await db.from('locations').select('id, name');
+  const floorKey = String(floor || '1');
+  let locationId = WAREHOUSE_FACTORY_LOCATION_ID;
+  if (floorKey === '2') {
+    locationId = resolveWarehouseFloor2Location(locRows || [])?.id || locationId;
+  }
+  if (locationId) {
+    await setWarehouseAssemblyQuantity(assemblyId, locationId, quantity);
+  }
+
+  let imageUrl = '';
+  if (imageFile) {
+    imageUrl = await uploadWarehouseAssemblyImage(assemblyId, imageFile);
+    if (floorKey === '2') {
+      const { data: existing } = await db.from(ASSEMBLIES).select('metadata').eq('id', assemblyId).maybeSingle();
+      const metadata = mergeWarehouseFloor2WipImageMetadata(existing?.metadata, imageUrl);
+      await db.from(ASSEMBLIES).update({ metadata, updated_at: new Date().toISOString() }).eq('id', assemblyId);
+    }
+  }
+
+  invalidateWarehouseCatalogCache();
+  return { ...data, image_url: imageUrl || data.image_url };
 }

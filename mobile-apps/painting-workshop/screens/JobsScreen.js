@@ -81,23 +81,26 @@ function JobCard({ job, locale, textAlign, busy, timerLocked, onPause, onPlay, o
       textAlign={textAlign}
       style={[kiosk.card, styles.jobCard]}
     >
-      {showJobPhoto ? (
-        <Image source={{ uri: thumb }} style={styles.jobThumb} resizeMode="contain" />
+      {fromQuote && String(job.quote_number || '').trim() ? (
+        <Text style={styles.quoteBadgeRight}>{String(job.quote_number).trim()}</Text>
       ) : null}
-      <Text style={[styles.kindChip, { alignSelf: textAlign === 'right' ? 'flex-end' : 'flex-start' }]}>
+      <Text style={[styles.kindChip, { alignSelf: 'center', textAlign: 'center' }]}>
         {tUi(sourceKey, locale)}
       </Text>
-      <Text style={[styles.jobTitle, { textAlign }]}>{textForDisplay(job.product_name, '—')}</Text>
-      <Text style={[styles.jobMeta, { textAlign }]}>
-        {[
-          fromQuote && String(job.quote_number || '').trim()
-            ? String(job.quote_number).trim()
-            : textForDisplay(job.product_sku || '', ''),
-          qty > 1 ? `×${qty}` : '',
-        ]
-          .filter(Boolean)
-          .join(' · ')}
-      </Text>
+      <View style={styles.productRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.jobTitle, { textAlign }]}>{textForDisplay(job.product_name, '—')}</Text>
+          <Text style={[styles.jobMeta, { textAlign }]}>
+            {[
+              textForDisplay(job.product_sku || '', ''),
+              qty > 1 ? `×${qty}` : '',
+            ].filter(Boolean).join(' · ')}
+          </Text>
+        </View>
+        {showJobPhoto ? (
+          <Image source={{ uri: thumb }} style={styles.thumbInline} resizeMode="cover" />
+        ) : null}
+      </View>
       {sentBy ? (
         <Text style={[styles.jobMeta, { textAlign }]}>
           {tUi('paintingJobSentBy', locale)}: {textForDisplay(sentBy, '—')}
@@ -123,7 +126,8 @@ function JobCard({ job, locale, textAlign, busy, timerLocked, onPause, onPlay, o
             onPress={() => onPlay(job.job_id || job.id)}
             style={styles.iconBtn}
           >
-            <MaterialCommunityIcons name="play-circle" size={52} color={KIOSK_ICON_BLUE_ON_DARK} />
+            <MaterialCommunityIcons name="play-circle" size={52} color="#22c55e" />
+            <Text style={styles.iconCaption}>{tUi('quoteOrderAcceptStart', locale)}</Text>
           </ProductionPressableHint>
         ) : null}
         {isRunning ? (
@@ -135,7 +139,8 @@ function JobCard({ job, locale, textAlign, busy, timerLocked, onPause, onPlay, o
             onPress={() => onPause(job.job_id || job.id)}
             style={styles.iconBtn}
           >
-            <MaterialCommunityIcons name="pause-circle" size={52} color={KIOSK_ICON_BLUE_ON_DARK} />
+            <MaterialCommunityIcons name="pause-circle" size={52} color="#f59e0b" />
+            <Text style={styles.iconCaption}>{tUi('quoteOrderPause', locale)}</Text>
           </ProductionPressableHint>
         ) : null}
         {!isCompleted ? (
@@ -158,7 +163,8 @@ function JobCard({ job, locale, textAlign, busy, timerLocked, onPause, onPlay, o
           onPress={() => onFinish(job)}
           style={styles.iconBtn}
         >
-          <MaterialCommunityIcons name="stop-circle" size={52} color={theme.danger} />
+            <MaterialCommunityIcons name="stop-circle" size={52} color={theme.danger} />
+            <Text style={styles.iconCaption}>{tUi('quoteOrderEnd', locale)}</Text>
         </ProductionPressableHint>
       </View>
       <Text style={[kiosk.hint, { textAlign }]}>{tUi('paintingJobControlsHint', locale)}</Text>
@@ -525,6 +531,17 @@ const styles = StyleSheet.create({
   },
   kindChipReturn: { color: theme.danger },
   jobCard: { marginBottom: 12 },
+  quoteBadgeRight: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: theme.primary,
+    textAlign: 'right',
+    alignSelf: 'stretch',
+    marginBottom: 6,
+  },
+  productRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  thumbInline: { width: 56, height: 56, borderRadius: 8, backgroundColor: '#ffffff' },
+  iconCaption: { color: '#e2e8f0', fontSize: 11, fontWeight: '700', marginTop: 2, textAlign: 'center', maxWidth: 88 },
   jobThumb: { width: '100%', height: 160, borderRadius: 10, marginBottom: 8, backgroundColor: '#ffffff' },
   jobTitle: { fontSize: 18, fontWeight: '700', color: theme.text, marginBottom: 4 },
   jobMeta: { fontSize: 13, color: theme.muted, marginBottom: 10 },

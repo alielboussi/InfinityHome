@@ -177,7 +177,9 @@ function deliveryNoteTitle(documentKind = 'delivery') {
   if (kind === 'repair_delivery') return 'Repair Delivery Note';
   if (kind === 'sold_delivery') return 'Sold Delivery Note';
   if (kind === 'farm_delivery') return 'Farm Delivery Note';
+  if (kind === 'farm_return') return 'Farm to Warehouse Delivery Note';
   if (kind === 'order_delivery') return 'Customer Order Delivery Note';
+  if (kind === 'showroom_delivery') return 'Showroom Order Delivery Note';
   /** Kitwe truck send + sent-delivery reprints only — never mix with sold_delivery. */
   return 'Delivery Note';
 }
@@ -189,6 +191,8 @@ function deliveryNoteNumberLabel(documentKind = 'delivery') {
   if (kind === 'repair_delivery') return 'Repair Delivery No.';
   if (kind === 'sold_delivery') return 'Sold Delivery No.';
   if (kind === 'order_delivery') return 'Customer Order No.';
+  if (kind === 'showroom_delivery') return 'Showroom Order No.';
+  if (kind === 'farm_delivery' || kind === 'farm_return') return 'Farm Transfer No.';
   return 'Delivery No.';
 }
 

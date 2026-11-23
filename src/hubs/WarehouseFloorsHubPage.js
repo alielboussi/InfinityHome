@@ -48,6 +48,7 @@ export default function WarehouseFloorsHubPage() {
                 canManage={canManage}
                 canAddProduct={canAddProduct}
                 hidden={isSalesStorageView}
+                floor="1"
               />
             </div>
           </PortalHubBar>
@@ -73,6 +74,7 @@ export default function WarehouseFloorsHubPage() {
               canAddProduct={canAddProduct}
               createPortal="warehouse-floor-2"
               returnTo="/warehouse-floors?floor=2"
+              floor="2"
             />
           </PortalHubBar>
         </div>

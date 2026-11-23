@@ -72,8 +72,8 @@ export default function HassanShowroomOrderForm({ onDonePath = '/orders' }) {
   const addLine = (group) => {
     const aid = String(group.assemblyIds?.[0] || '').trim();
     if (!aid) return;
-    const asm = assemblyById.get(aid);
     const stockQty = Math.max(0, Number(group.totalQty) || 0);
+    const asm = assemblyById.get(aid);
     setCart((prev) => {
       const existing = prev.find((l) => l.assembly_id === aid);
       if (existing) return prev;

@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { FaPlus } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
+import WarehouseAccessoryCreateDialog from './WarehouseAccessoryCreateDialog';
 
 export default function WarehouseCatalogCreateActions({
   canManage = false,
@@ -8,8 +9,11 @@ export default function WarehouseCatalogCreateActions({
   hidden = false,
   createPortal = 'warehouse-products',
   returnTo = '',
+  floor = '1',
+  onAccessoryCreated,
 } = {}) {
   const navigate = useNavigate();
+  const [accessoryOpen, setAccessoryOpen] = useState(false);
   if (hidden || (!canManage && !canAddProduct)) return null;
 
   const newProductUrl = (kind) => {
@@ -45,6 +49,22 @@ export default function WarehouseCatalogCreateActions({
           <span>Product</span>
         </button>
       ) : null}
+      {canAddProduct ? (
+        <button
+          type="button"
+          className="warehouse-catalog-action-btn"
+          onClick={() => setAccessoryOpen(true)}
+        >
+          <FaPlus aria-hidden />
+          <span>Accessory</span>
+        </button>
+      ) : null}
+      <WarehouseAccessoryCreateDialog
+        open={accessoryOpen}
+        floor={floor}
+        onClose={() => setAccessoryOpen(false)}
+        onCreated={() => onAccessoryCreated?.()}
+      />
       {canManage ? (
         <button
           type="button"

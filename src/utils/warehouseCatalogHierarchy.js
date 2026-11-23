@@ -4,6 +4,7 @@
  *   products → sets (showroom kit BOM per location)
  * Packets never go into sets; sets never include packets or other sets.
  */
+import { isWarehouseAccessory, isWarehouseAccessorySubcategory } from './warehouseAccessoryCatalog.js';
 
 export const WAREHOUSE_CATALOG_LEVEL = Object.freeze({
   PACKET: 'packet',
@@ -16,6 +17,7 @@ export function normalizeWarehouseItemKind(assembly) {
 }
 
 export function isWarehouseProductAssembly(assembly) {
+  if (isWarehouseAccessory(assembly) || isWarehouseAccessorySubcategory(assembly)) return false;
   return normalizeWarehouseItemKind(assembly) === WAREHOUSE_CATALOG_LEVEL.PRODUCT;
 }
 
@@ -32,6 +34,9 @@ export function validateSetComponentAssembly(component, { setAssemblyId } = {}) 
   }
   if (isWarehouseSetAssembly(component)) {
     throw new Error('Sets combine products only — not other sets.');
+  }
+  if (isWarehouseAccessory(component) || isWarehouseAccessorySubcategory(component)) {
+    throw new Error('Sets combine products only — not accessories.');
   }
   if (!isWarehouseProductAssembly(component)) {
     throw new Error('Sets combine products only — link packets on a product, not on a set.');

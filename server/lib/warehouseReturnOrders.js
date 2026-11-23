@@ -357,7 +357,10 @@ export async function createWarehouseReturnOrder(sb, body, user) {
   const now = new Date().toISOString();
   const batchCount = unitLines.length;
 
-  await adjustAssemblyStock(sb, parsed.assemblyId, KITWE_LOCATION_ID, -parsed.totalQty);
+  const hasCustomerInfo = Boolean(customerName || customerPhone || customerId);
+  if (!hasCustomerInfo) {
+    await adjustAssemblyStock(sb, parsed.assemblyId, KITWE_LOCATION_ID, -parsed.totalQty);
+  }
 
   const inserted = [];
   try {
@@ -384,7 +387,8 @@ export async function createWarehouseReturnOrder(sb, body, user) {
         created_by_email: user?.email || null,
         created_by_name: user?.user_metadata?.full_name || user?.full_name || HASSAN_AWAD.displayName,
         metadata: {
-          kitwe_deducted_at: now,
+          kitwe_deducted_at: hasCustomerInfo ? null : now,
+          kitwe_not_deducted: hasCustomerInfo,
           batch_line_index: i + 1,
           batch_line_count: batchCount,
           reason_group: unit.reason_group || null,
@@ -397,7 +401,9 @@ export async function createWarehouseReturnOrder(sb, body, user) {
       queueProductionReturnPush(mapped);
     }
   } catch (err) {
-    await adjustAssemblyStock(sb, parsed.assemblyId, KITWE_LOCATION_ID, parsed.totalQty);
+    if (!hasCustomerInfo) {
+      await adjustAssemblyStock(sb, parsed.assemblyId, KITWE_LOCATION_ID, parsed.totalQty);
+    }
     throw err;
   }
 
@@ -469,14 +475,17 @@ async function createWarehouseReturnOrdersFromReceipt(sb, body, user) {
     const key = unit.assembly.id;
     stockDeltas.set(key, (stockDeltas.get(key) || 0) + 1);
   }
-  for (const [assemblyId, need] of stockDeltas.entries()) {
-    const kitweQty = await getAssemblyStockQty(sb, assemblyId, KITWE_LOCATION_ID);
-    if (kitweQty < need) {
-      throw new Error(`Insufficient Kitwe stock for this receipt (need ${need}, have ${kitweQty}).`);
+  const hasCustomerInfo = Boolean(customerName || customerPhone || customerId);
+  if (!hasCustomerInfo) {
+    for (const [assemblyId, need] of stockDeltas.entries()) {
+      const kitweQty = await getAssemblyStockQty(sb, assemblyId, KITWE_LOCATION_ID);
+      if (kitweQty < need) {
+        throw new Error(`Insufficient Kitwe stock for this receipt (need ${need}, have ${kitweQty}).`);
+      }
     }
-  }
-  for (const [assemblyId, need] of stockDeltas.entries()) {
-    await adjustAssemblyStock(sb, assemblyId, KITWE_LOCATION_ID, -need);
+    for (const [assemblyId, need] of stockDeltas.entries()) {
+      await adjustAssemblyStock(sb, assemblyId, KITWE_LOCATION_ID, -need);
+    }
   }
 
   const inserted = [];
@@ -507,7 +516,8 @@ async function createWarehouseReturnOrdersFromReceipt(sb, body, user) {
         created_by_email: user?.email || null,
         created_by_name: user?.user_metadata?.full_name || user?.full_name || HASSAN_AWAD.displayName,
         metadata: {
-          kitwe_deducted_at: now,
+          kitwe_deducted_at: hasCustomerInfo ? null : now,
+          kitwe_not_deducted: hasCustomerInfo,
           batch_line_index: i + 1,
           batch_line_count: batchCount,
           reason_group: unit.reason_group || null,
@@ -523,8 +533,10 @@ async function createWarehouseReturnOrdersFromReceipt(sb, body, user) {
       queueProductionReturnPush(mapped);
     }
   } catch (err) {
-    for (const [assemblyId, need] of stockDeltas.entries()) {
-      await adjustAssemblyStock(sb, assemblyId, KITWE_LOCATION_ID, need);
+    if (!hasCustomerInfo) {
+      for (const [assemblyId, need] of stockDeltas.entries()) {
+        await adjustAssemblyStock(sb, assemblyId, KITWE_LOCATION_ID, need);
+      }
     }
     throw err;
   }
@@ -1243,16 +1255,27 @@ export async function finalizeReturnShipmentOnKitweAccept(sb, session, { accepte
   if (!row) return null;
   const prevMeta = row.metadata || {};
   if (prevMeta.kitwe_restored_at) return mapReturnRow(row);
+  const driverSig = String(session.metadata?.driver_signature_url || '').trim();
+  const driverName = String(session.metadata?.driver_name || '').trim();
+  if (!driverSig || !driverName) {
+    throw new Error('Kitwe stock cannot be restored until the WHR shipment has a named driver and signature.');
+  }
+
+  let nextMeta = {
+    ...prevMeta,
+    floor1_awaiting_hassan: false,
+    hassan_accepted_at: acceptedAt,
+  };
+  if (prevMeta.kitwe_deducted_at) {
+    const qty = Math.max(1, Number(row.quantity) || 1);
+    await adjustAssemblyStock(sb, row.assembly_id, KITWE_LOCATION_ID, qty);
+    nextMeta.kitwe_restored_at = acceptedAt;
+  }
 
   await sb.from(RETURNS).update({
     status: WAREHOUSE_RETURN_STATUSES.SHIPPED,
     updated_at: acceptedAt,
-    metadata: {
-      ...prevMeta,
-      kitwe_restored_at: acceptedAt,
-      floor1_awaiting_hassan: false,
-      hassan_accepted_at: acceptedAt,
-    },
+    metadata: nextMeta,
   }).eq('id', returnOrderId);
 
   const { data: updated } = await sb.from(RETURNS).select('*').eq('id', returnOrderId).maybeSingle();

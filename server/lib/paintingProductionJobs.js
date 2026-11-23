@@ -774,11 +774,15 @@ export async function finishPaintingProductionJob(sb, {
   }
 
   let floor1Credited = false;
+  let pendingFloor1 = null;
   if (dest === 'floor1' && productId) {
-    const { floor1LocationId } = await resolveFloor2AndFactoryIds(sb);
-    await adjustAssemblyInventory(sb, productId, floor1LocationId, qty);
-    await recomputeWarehouseLocationStockServer(sb, floor1LocationId);
-    floor1Credited = true;
+    const { buildPendingFloor1Credit } = await import('./floor1CreditApproval.js');
+    pendingFloor1 = buildPendingFloor1Credit({
+      assemblyId: productId,
+      qty,
+      requestedBy: userId,
+      source: 'painting_job',
+    });
   }
 
   const updated = await saveJobPatch(sb, job.id, {
@@ -791,6 +795,9 @@ export async function finishPaintingProductionJob(sb, {
       production_run_id: runErr ? null : runId,
       finish_destination: dest,
       floor1_credited: floor1Credited,
+      production_locked: true,
+      floor1_awaiting_hassan: dest === 'floor1',
+      pending_floor1_credit: pendingFloor1,
     },
   });
 
@@ -832,6 +839,9 @@ export async function finishPaintingProductionJob(sb, {
         dimLength: assemblyRow?.dim_length,
         dimWidth: assemblyRow?.dim_width,
         dimHeight: assemblyRow?.dim_height,
+        customerName: job.metadata?.customer_name,
+        customerPhone: job.metadata?.customer_phone,
+        quoteNumber: job.metadata?.quote_number,
       });
       if (!labelJobId) {
         labelPrintWarning = 'Job completed but labels were not sent to the printer (Zebra Weblink is not configured on the server).';

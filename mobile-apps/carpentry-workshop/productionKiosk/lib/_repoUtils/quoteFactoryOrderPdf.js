@@ -11,9 +11,8 @@ import {
   toArabicIndicDigits,
   translateTermToArabic,
   translateQtyUnitLabel,
-  collectProductionQuoteArabicPhrases,
   expandArabicPhraseVariants,
-  assertArabicTranslationsForPhrases,
+  fillFactoryOrderArabicMapGaps,
   collectFactoryOrderArabicCheckPhrases,
   translateProductLineNameToArabic,
   translateSlashDimensionDescriptionToArabic,
@@ -135,12 +134,15 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
   const company = await getCompanySettings();
   const logoUrl = getLogoUrl(company);
 
-  const phraseList = expandArabicPhraseVariants(collectFactoryOrderArabicCheckPhrases(items));
-  const serverTranslations = await translateQuoteStringsToArabicComplete(phraseList, {
-    requireComplete: true,
-    maxRounds: 8,
-  });
-  assertArabicTranslationsForPhrases(collectFactoryOrderArabicCheckPhrases(items), serverTranslations);
+  const checkPhrases = collectFactoryOrderArabicCheckPhrases(items);
+  const phraseList = expandArabicPhraseVariants(checkPhrases);
+  const serverTranslations = fillFactoryOrderArabicMapGaps(
+    checkPhrases,
+    await translateQuoteStringsToArabicComplete(phraseList, {
+      requireComplete: false,
+      maxRounds: 2,
+    }),
+  );
 
   const routeKey = String(route || '').trim().toLowerCase();
   const deptLabel = routeKey === 'carpentry'
@@ -577,18 +579,23 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
         target.offsetHeight || 0,
         120,
       );
-      const canvas = await html2canvas(target, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-        width: captureWidth,
-        height: captureHeight,
-        windowWidth: captureWidth,
-        windowHeight: Math.max(captureHeight, FACTORY_ORDER_A4_HEIGHT_PX),
-        scrollX: 0,
-        scrollY: 0,
-      });
+      const canvas = await Promise.race([
+        html2canvas(target, {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          backgroundColor: '#ffffff',
+          width: captureWidth,
+          height: captureHeight,
+          windowWidth: captureWidth,
+          windowHeight: Math.max(captureHeight, FACTORY_ORDER_A4_HEIGHT_PX),
+          scrollX: 0,
+          scrollY: 0,
+        }),
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('PDF render timed out (page capture). Try again.')), 45000);
+        }),
+      ]);
       const imgWidthMm = pageWidthMm;
       let contentHeightMm = Math.max(40, (canvas.height * imgWidthMm) / canvas.width);
       if (contentHeightMm > 297) {

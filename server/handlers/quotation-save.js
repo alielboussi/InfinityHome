@@ -161,9 +161,19 @@ export default async function handler(req, res) {
       }
 
       const nowIso = new Date().toISOString();
+      const phoneRaw = body?.phone || null;
+      if (phoneRaw) {
+        const { assertZambiaNationalPhone } = await import('../../src/utils/zambiaPhoneDigits.js');
+        try {
+          assertZambiaNationalPhone(phoneRaw, '+260');
+        } catch (phoneErr) {
+          res.status(400).json({ ok: false, error: phoneErr.message || 'Invalid Zambia phone number' });
+          return;
+        }
+      }
       const row = {
         name,
-        phone: body?.phone || null,
+        phone: phoneRaw,
         currency: body?.currency || 'K',
         address: body?.address || null,
         city: body?.city || null,

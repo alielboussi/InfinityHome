@@ -29,6 +29,7 @@ export function computeProductionFlowStatus(department, job) {
   const meta = job?.metadata && typeof job.metadata === 'object' ? job.metadata : {};
 
   if (dept === 'painting') {
+    if (status === 'cancelled') return 'Cancelled';
     if (ACTIVE_STATUSES.has(status)) return 'In Painting';
     if (status === 'completed') {
       const dest = String(meta.finish_destination || job.finish_destination || '').toLowerCase();
@@ -43,6 +44,8 @@ export function computeProductionFlowStatus(department, job) {
     }
     return 'In Painting';
   }
+
+  if (status === 'cancelled') return 'Cancelled';
 
   if (ACTIVE_STATUSES.has(status)) return 'In production';
 

@@ -46,6 +46,9 @@ function deliveryAdminStage(meta) {
 function quoteOrderFlowStatus(routing, run) {
   const meta = routing?.metadata && typeof routing.metadata === 'object' ? routing.metadata : {};
   if (routing?.completed_at) {
+    if (meta.pending_floor1_credit?.assembly_id || meta.floor1_awaiting_hassan === true) {
+      return 'Awaiting Floor 1 approval';
+    }
     const stage = deliveryAdminStage(meta);
     if (stage === 'awaiting_driver') return 'Ready For Delivery';
     if (stage === 'collected_by_driver') return 'With driver';
@@ -91,6 +94,9 @@ function toTrackingRow(department, row) {
     timer_started_at: row.timer_started_at || null,
     started_at: row.started_at || null,
     completed_at: row.completed_at || null,
+    pending_floor1_credit: Boolean(meta.pending_floor1_credit?.assembly_id),
+    floor1_awaiting_hassan: meta.floor1_awaiting_hassan === true,
+    production_locked: meta.production_locked === true || Boolean(row.completed_at),
   };
 }
 
@@ -152,6 +158,9 @@ async function listQuoteOrdersForTracking(sb) {
       timer_started_at: run?.started_at || null,
       started_at: routing.accepted_at || run?.started_at || routing.sent_to_production_at,
       completed_at: routing.completed_at || run?.completed_at || null,
+      pending_floor1_credit: Boolean(meta.pending_floor1_credit?.assembly_id),
+      floor1_awaiting_hassan: meta.floor1_awaiting_hassan === true,
+      production_locked: meta.production_locked === true || Boolean(routing.completed_at),
     });
   }
   return out;
@@ -190,6 +199,10 @@ function normalizeTrackKindFilter(raw) {
   if (!k || k === 'all') return null;
   if (k === 'factory' || k === 'quote' || k === 'quote_order' || k === 'showroom' || k === 'repair') return k;
   return null;
+}
+
+function isCancelledFactoryJob(row) {
+  return String(row?.status || '').trim().toLowerCase() === 'cancelled';
 }
 
 function shouldHideBehindPainting(department, row, activePaintingAssemblyIds) {
@@ -240,14 +253,17 @@ export async function listProductionJobsForTracking(sb, {
   const merged = [];
 
   for (const row of upholstery) {
+    if (isCancelledFactoryJob(row)) continue;
     if (shouldHideBehindPainting('upholstery', row, activePaintingAssemblyIds)) continue;
     merged.push(toTrackingRow('upholstery', row));
   }
   for (const row of carpentry) {
+    if (isCancelledFactoryJob(row)) continue;
     if (shouldHideBehindPainting('carpentry', row, activePaintingAssemblyIds)) continue;
     merged.push(toTrackingRow('carpentry', row));
   }
   for (const row of painting) {
+    if (isCancelledFactoryJob(row)) continue;
     merged.push(toTrackingRow('painting', row));
   }
 

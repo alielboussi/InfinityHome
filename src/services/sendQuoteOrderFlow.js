@@ -10,7 +10,13 @@ import {
   sendFactoryOrderWhatsApp,
   sendQuoteToWarehouseProduction,
 } from './quoteProductionApi';
-import { assertQuoteReadyForSendOrder } from '../utils/quoteSendOrderValidate';
+import {
+  assertQuoteReadyForSendOrder,
+  assertCustomerOrderCatalogLines,
+  assertShowroomOrderFloor2Lines,
+  assertCustomerOrderZambiaPhone,
+} from '../utils/quoteSendOrderValidate';
+import { isQuoteShowroomOrderFromRouting } from '../utils/quoteShowroomOrder';
 
 const VALID_ROUTES = new Set(['carpentry', 'upholstery', 'aluminum']);
 
@@ -91,6 +97,13 @@ export async function executeSendQuoteOrder(quoteRowOrId, { fallbackRoute = '', 
   }
 
   assertQuoteReadyForSendOrder(rawItems || []);
+  const isShowroom = isQuoteShowroomOrderFromRouting(routing);
+  if (isShowroom) {
+    assertShowroomOrderFloor2Lines(rawItems || []);
+  } else {
+    assertCustomerOrderCatalogLines(rawItems || []);
+    assertCustomerOrderZambiaPhone(customerPhone);
+  }
 
   const enrichedItems = (rawItems || []).map((raw) => {
     const norm = normalizeQuotationItemRow(raw);

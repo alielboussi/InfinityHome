@@ -1,6 +1,6 @@
 /**
- * Warehouse Catalog mobile app — screens and permission axes.
- * Keep in sync with src/mobile/mobileAccessManifest.js (web /user-access + CI).
+ * Warehouse Catalog mobile app — screens and permission axes (web /user-access).
+ * When a new screen ships in the APK, register it here AND copy to mobile-apps/shared/mobileAccessManifest.js.
  *
  * Permission values: 'allow' | 'deny' (default deny until admin enables).
  */
@@ -524,14 +524,9 @@ export const DELIVERY_APP_SCREENS = Object.freeze([
     description: 'Scan Floor 1 stock, driver signature, and send truck delivery to Kitwe',
   },
   {
-    id: 'delivery_send_farm',
-    label: 'Send to Farm',
-    description: 'Send Floor 2 finished units to Farm Warehouse 1 (driver signature + FRM note)',
-  },
-  {
-    id: 'delivery_send_warehouse',
-    label: 'Send to Warehouse',
-    description: 'Send Farm Warehouse 1 units back to Floor 2 (driver signature; WhatsApp share only)',
+    id: 'delivery_farm',
+    label: 'Farm deliveries',
+    description: 'Send Farm Warehouse 1 stock to Floor 2 WIP or Kitwe (driver, signature, A4 PDF, WhatsApp)',
   },
   {
     id: 'delivery_sent_list',
@@ -591,14 +586,8 @@ export function isWorkshopOrDeliveryScreenAllowed(grant, screenId, appFlag) {
     ? ['delivery_send_kitwe', 'kitwe_send_delivery']
     : screenId === 'kitwe_send_delivery'
       ? ['kitwe_send_delivery', 'delivery_send_kitwe']
-      : screenId === 'delivery_send_farm'
-        ? ['delivery_send_farm', 'farm_send_delivery']
-        : screenId === 'farm_send_delivery'
-          ? ['farm_send_delivery', 'delivery_send_farm']
-          : screenId === 'delivery_send_warehouse'
-            ? ['delivery_send_warehouse', 'warehouse_send_farm']
-            : screenId === 'warehouse_send_farm'
-              ? ['warehouse_send_farm', 'delivery_send_warehouse']
+      : ['delivery_farm', 'delivery_send_farm', 'delivery_send_warehouse', 'farm_send_delivery', 'warehouse_send_farm'].includes(screenId)
+        ? ['delivery_farm', 'delivery_send_farm', 'delivery_send_warehouse', 'farm_send_delivery', 'warehouse_send_farm']
               : [screenId];
   for (const id of ids) {
     const row = grant.screens?.[id];
@@ -700,15 +689,12 @@ export function canMobileScreenView(grant, screenId) {
   }
 
   if (screenId === 'kitwe_send_delivery') {
-    return isWarehouseDeliveryAppAllowed(grant);
+    return isWorkshopOrDeliveryScreenAllowed(grant, 'delivery_send_kitwe', 'warehouse_delivery_app')
+      || grant?.warehouse_production_kitwe === 'allow';
   }
 
-  if (screenId === 'farm_send_delivery') {
-    return isWorkshopOrDeliveryScreenAllowed(grant, 'delivery_send_farm', 'warehouse_delivery_app');
-  }
-
-  if (screenId === 'warehouse_send_farm') {
-    return isWorkshopOrDeliveryScreenAllowed(grant, 'delivery_send_warehouse', 'warehouse_delivery_app');
+  if (screenId === 'farm_send_delivery' || screenId === 'warehouse_send_farm') {
+    return isWorkshopOrDeliveryScreenAllowed(grant, 'delivery_farm', 'warehouse_delivery_app');
   }
 
   return isMobileScreenAccessAllowed(grant, screenId);
@@ -936,19 +922,17 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
     merged.warehouse_delivery_app = 'allow';
   }
 
-  const farmSendAllowed = isWorkshopOrDeliveryScreenAllowed(
+  const farmAllowed = isWorkshopOrDeliveryScreenAllowed(
     merged,
-    'delivery_send_farm',
+    'delivery_farm',
     'warehouse_delivery_app',
   );
-  merged.screens.farm_send_delivery = buildMobileScreenAccessRow(farmSendAllowed);
-
-  const warehouseFromFarmAllowed = isWorkshopOrDeliveryScreenAllowed(
-    merged,
-    'delivery_send_warehouse',
-    'warehouse_delivery_app',
-  );
-  merged.screens.warehouse_send_farm = buildMobileScreenAccessRow(warehouseFromFarmAllowed);
+  const farmRow = buildMobileScreenAccessRow(farmAllowed);
+  merged.screens.delivery_farm = farmRow;
+  merged.screens.delivery_send_farm = farmRow;
+  merged.screens.delivery_send_warehouse = farmRow;
+  merged.screens.farm_send_delivery = farmRow;
+  merged.screens.warehouse_send_farm = farmRow;
 
   syncWorkshopOrdersGrantScreens(
     merged,

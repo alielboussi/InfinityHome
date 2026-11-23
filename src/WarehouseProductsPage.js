@@ -34,6 +34,7 @@ import {
 } from './utils/warehouseAssemblyMath';
 import { buildPacketsByAssembly } from './utils/warehouseAssemblyPacketPool';
 import { isWarehouseSetAssembly, computeWarehouseFactorySetBuildableQty, buildWarehouseAssemblyLeftoverQtyMap, formatWarehouseSetStockCount } from './utils/warehouseSetMath';
+import { isWarehouseAccessory, isWarehouseAccessorySubcategory } from './utils/warehouseAccessoryCatalog';
 import { collectSetComponentAssemblyIds } from './utils/warehouseSetItems';
 import {
   assemblyUsesFinishedBoxReceiving,
@@ -385,9 +386,9 @@ export default function WarehouseProductsPage({ embedInHub = false } = {}) {
 
   const warehouseCatalogProducts = useMemo(() => {
     if (isSetsView) {
-      return (assemblies || []).filter((a) => isWarehouseSetAssembly(a));
+      return (assemblies || []).filter((a) => isWarehouseSetAssembly(a) && !isWarehouseAccessorySubcategory(a));
     }
-    const base = (assemblies || []).filter((a) => !isWarehouseSetAssembly(a));
+    const base = (assemblies || []).filter((a) => !isWarehouseSetAssembly(a) && !isWarehouseAccessorySubcategory(a));
     return base.filter((a) => {
       const pktList = packetsByAssembly.get(String(a.id)) || [];
       if (isIncompleteView) return isIncompletePacketBomProduct(a, pktList);
@@ -965,8 +966,8 @@ export default function WarehouseProductsPage({ embedInHub = false } = {}) {
                     />
                     <div className="warehouse-assembly-card__main">
                       <div className="warehouse-assembly-card__title-row">
-                        <span className={`warehouse-kind-badge warehouse-kind-badge--${isWarehouseSetAssembly(assembly) ? 'set' : 'product'}`}>
-                          {isWarehouseSetAssembly(assembly) ? 'Set' : 'Product'}
+                        <span className={`warehouse-kind-badge warehouse-kind-badge--${isWarehouseSetAssembly(assembly) ? 'set' : (isWarehouseAccessory(assembly) ? 'set' : 'product')}`}>
+                          {isWarehouseSetAssembly(assembly) ? 'Set' : (isWarehouseAccessory(assembly) ? 'Accessory' : 'Product')}
                         </span>
                         <WarehouseAssemblyInlineName
                           assembly={assembly}

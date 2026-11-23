@@ -21,8 +21,16 @@ export const PRODUCTION_TRACKING_PROGRESS = Object.freeze([
   { value: 'completed', label: 'Completed only' },
 ]);
 
+/** Hide workshop-cancelled rows (not shown in mobile job queues). */
+export function isProductionTrackingRowHidden(row) {
+  const st = String(row?.timer_status || row?.status || '').trim().toLowerCase();
+  return st === 'cancelled';
+}
+
 export function isProductionTrackingJobCompleted(row) {
   if (!row) return false;
+  if (row.pending_floor1_credit || row.floor1_awaiting_hassan) return false;
+  if (isProductionTrackingRowHidden(row)) return true;
   if (row.completed_at) return true;
   const timer = String(row.timer_status || '').trim().toLowerCase();
   if (timer === 'completed') return true;
@@ -96,6 +104,8 @@ export function factoryTrackingCollapseKey(row) {
   const qid = String(row?.quote_id || '').trim();
   if (qid) return `${dept}|quote|${qid}`;
   const asm = String(row?.assembly_id || '').trim();
+  // Painting: multiple Floor 2 sends for the same SKU are separate timed jobs.
+  if (dept === 'painting' && asm) return `${dept}|job|${row.id}`;
   if (asm) return `${dept}|asm|${asm}`;
   return `${dept}|job|${row.id}`;
 }
@@ -193,6 +203,7 @@ export function applyProductionTrackingFilters(rows, {
   progress = 'all',
 } = {}) {
   let list = Array.isArray(rows) ? rows : [];
+  list = list.filter((row) => !isProductionTrackingRowHidden(row));
   list = list.filter((row) => rowMatchesProductionDepartment(row, department));
   list = list.filter((row) => rowMatchesProductionTrackKind(row, trackKind));
   const q = String(search || '').trim().toLowerCase();

@@ -121,6 +121,17 @@ export function deliverySessionNeedsCatalogFinalize(entries, sessionStatus) {
 }
 
 /** Every Kitwe tick row received but session still pending (stuck after partial accept). */
+/** Do not auto-accept on page load — repairs/farm returns need an explicit Hassan Accept click. */
+export function deliverySessionSkipAutoFinalize(session) {
+  const meta = session?.metadata || {};
+  const kind = String(meta.document_kind || '').toLowerCase();
+  if (meta.is_return_shipment === true) return true;
+  if (kind === 'repair_delivery' || kind === 'farm_return' || kind === 'return_shipment') return true;
+  if (String(meta.delivery_flow || '') === 'farm_return') return true;
+  if (String(meta.return_order_id || '').trim()) return true;
+  return false;
+}
+
 export function deliverySessionNeedsTickRowFinalize(entries, sessionStatus) {
   if (!isWarehousePending(sessionStatus)) return false;
   const ticks = warehouseDeliveryReceiverTickRows(entries);
@@ -258,6 +269,13 @@ export function warehouseDeliverySessionKind(session) {
 export function warehouseDeliverySessionRouteLabel(session, { fromName = 'Factory', toName = 'Kitwe' } = {}) {
   const kind = warehouseDeliverySessionKind(session);
   const note = String(session?.delivery_number || '').trim();
+  const flow = String(session?.metadata?.delivery_flow || '').trim();
+  if (flow === 'farm_return' || String(session?.metadata?.document_kind || '') === 'farm_return') {
+    const dest = String(session?.metadata?.credit_destination || '').toLowerCase() === 'floor2'
+      ? 'Floor 2 WIP'
+      : 'Kitwe';
+    return `Farm → ${dest}${note ? ` · ${note}` : ''}`;
+  }
   if (kind === 'return_shipment') {
     const ret = String(session?.metadata?.return_number || '').trim();
     return `Return to Kitwe (WHR)${ret ? ` · ${ret}` : ''}${note ? ` · ${note}` : ''}`;

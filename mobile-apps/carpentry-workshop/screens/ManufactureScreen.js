@@ -23,6 +23,7 @@ import { tUi } from '../productionKiosk/lib/productionKioskI18n';
 import {
   fetchCarpentryManufactureProducts,
   runCarpentryManufacture,
+  sendCarpentryProductToPainting,
 } from '../services/carpentryApi';
 import { emitProductionRefresh } from '../productionKiosk/lib/productionRefreshBus';
 import ManufactureProductGridCard from '../shared/components/ManufactureProductGridCard';
@@ -104,6 +105,8 @@ export default function ManufactureScreen({
   const [busyId, setBusyId] = useState('');
   const [qtyModal, setQtyModal] = useState(null);
   const [qtyDraft, setQtyDraft] = useState('1');
+  const [paintModal, setPaintModal] = useState(null);
+  const [paintDraft, setPaintDraft] = useState('1');
 
   const loadList = useCallback(async ({ fromPull = false } = {}) => {
     if (!allowed) {
@@ -165,6 +168,17 @@ export default function ManufactureScreen({
     setQtyModal({ item });
   }, [busyId]);
 
+  const openSendPainting = useCallback((item) => {
+    if (busyId) return;
+    const available = floor2Qty(item);
+    if (available < 1) {
+      Alert.alert(tUi('paintingConfirmTitle', locale), tUi('paintingQtyExceedsStock', locale).replace('{max}', '0'));
+      return;
+    }
+    setPaintDraft('1');
+    setPaintModal({ item, max: available });
+  }, [busyId, locale]);
+
   const handleBarcodeScanned = useCallback((scannedValue) => {
     setScanOpen(false);
     const cleaned = sanitizeWarehouseScannerInput(scannedValue);
@@ -217,6 +231,34 @@ export default function ManufactureScreen({
     }
   };
 
+  const confirmSendPainting = async () => {
+    if (!paintModal?.item) return;
+    const item = paintModal.item;
+    const assemblyId = String(item.id || item.assembly_id || item.raw_assembly_id || '');
+    const max = Math.max(1, Math.floor(Number(paintModal.max) || 1));
+    const rawNum = Math.floor(Number(paintDraft) || 0);
+    if (!Number.isFinite(rawNum) || rawNum < 1) {
+      Alert.alert(tUi('paintingConfirmTitle', locale), tUi('needQty', locale));
+      return;
+    }
+    if (rawNum > max) {
+      Alert.alert(tUi('paintingConfirmTitle', locale), tUi('paintingQtyExceedsStock', locale).replace('{max}', String(max)));
+      return;
+    }
+    setPaintModal(null);
+    setBusyId(assemblyId);
+    try {
+      await sendCarpentryProductToPainting({ assemblyId, productQty: rawNum });
+      emitProductionRefresh('manufacture');
+      await loadList({ fromPull: true });
+      Alert.alert(tUi('paintingConfirmTitle', locale), tUi('paintingDone', locale));
+    } catch (e) {
+      Alert.alert(tUi('paintingFailed', locale), e?.message || tUi('paintingFailed', locale));
+    } finally {
+      setBusyId('');
+    }
+  };
+
   const renderProductCard = ({ item }) => {
     const id = String(item.id || item.assembly_id || '');
     const qty = floor2Qty(item);
@@ -233,6 +275,7 @@ export default function ManufactureScreen({
           busy={cardBusy}
           disabled={Boolean(busyId)}
           onPress={() => openQtyAdd(item)}
+          onLongPress={qty > 0 ? () => openSendPainting(item) : undefined}
         />
       </View>
     );
@@ -270,7 +313,6 @@ export default function ManufactureScreen({
       <Pressable style={kiosk.backBtn} onPress={() => navigation.goBack()}>
         <Text style={kiosk.backText}>{tUi('back', locale)}</Text>
       </Pressable>
-      <Text style={[kiosk.hint, styles.intro, { textAlign }]}>{tUi('manufactureIntro', locale)}</Text>
       <View style={styles.searchRow}>
         <TextInput
           style={[kiosk.input, styles.searchInput, { textAlign: 'left' }]}
@@ -365,6 +407,66 @@ export default function ManufactureScreen({
                 <Text style={kiosk.btnText}>{tUi('cancel', locale)}</Text>
               </Pressable>
               <Pressable style={[kiosk.btn, kiosk.btnPrimary, styles.modalBtn]} onPress={confirmAdd}>
+                <Text style={[kiosk.btnText, kiosk.btnPrimaryText]}>{tUi('confirm', locale)}</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={Boolean(paintModal)} transparent animationType="fade" onRequestClose={() => setPaintModal(null)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setPaintModal(null)}>
+          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.modalTitle}>{tUi('paintingConfirmTitle', locale)}</Text>
+            <Text style={styles.modalProductName}>{paintModal?.item?.name || ''}</Text>
+            <Text style={styles.modalSub}>
+              {tUi('paintingAvailableQty', locale).replace('{qty}', String(paintModal?.max || 0))}
+            </Text>
+            <Text style={styles.modalLabel}>
+              {tUi('paintingQtyLabel', locale).replace('{max}', String(paintModal?.max || 0))}
+            </Text>
+            <View style={styles.qtyStepperRow}>
+              <Pressable
+                style={styles.stepBtn}
+                onPress={() => {
+                  const cur = Math.max(1, Math.floor(Number(paintDraft) || 1));
+                  setPaintDraft(String(Math.max(1, cur - 1)));
+                }}
+              >
+                <Text style={styles.stepBtnText}>−</Text>
+              </Pressable>
+              <TextInput
+                style={[kiosk.input, styles.qtyInput]}
+                value={paintDraft}
+                onChangeText={(txt) => {
+                  const cleaned = String(txt || '').replace(/[^0-9]/g, '');
+                  if (!cleaned) {
+                    setPaintDraft('');
+                    return;
+                  }
+                  const n = Math.floor(Number(cleaned) || 0);
+                  const max = Math.max(1, Math.floor(Number(paintModal?.max) || 1));
+                  setPaintDraft(String(Math.max(1, Math.min(max, n))));
+                }}
+                keyboardType="number-pad"
+                maxLength={3}
+              />
+              <Pressable
+                style={styles.stepBtn}
+                onPress={() => {
+                  const cur = Math.max(1, Math.floor(Number(paintDraft) || 1));
+                  const max = Math.max(1, Math.floor(Number(paintModal?.max) || 1));
+                  setPaintDraft(String(Math.min(max, cur + 1)));
+                }}
+              >
+                <Text style={styles.stepBtnText}>+</Text>
+              </Pressable>
+            </View>
+            <View style={styles.modalActions}>
+              <Pressable style={[kiosk.btn, styles.modalBtn]} onPress={() => setPaintModal(null)}>
+                <Text style={kiosk.btnText}>{tUi('cancel', locale)}</Text>
+              </Pressable>
+              <Pressable style={[kiosk.btn, kiosk.btnPrimary, styles.modalBtn]} onPress={confirmSendPainting}>
                 <Text style={[kiosk.btnText, kiosk.btnPrimaryText]}>{tUi('confirm', locale)}</Text>
               </Pressable>
             </View>

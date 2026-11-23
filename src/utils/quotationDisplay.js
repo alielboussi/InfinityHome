@@ -40,6 +40,8 @@ export function normalizeQuotationItemRow(row) {
     foam_type: fields.foam_type ?? '',
     aluminum_thickness_mm: fields.aluminum_thickness_mm ?? '',
     accessories: fields.accessories ?? [],
+    accessory_picks: fields.accessory_picks ?? [],
+    accessory_subcategory_fields: fields.accessory_subcategory_fields ?? [],
     line_image_url: row.line_image_url ?? meta.line_image_url ?? meta.floor2_image_url ?? '',
     floor2_assembly_id: row.floor2_assembly_id ?? meta.floor2_assembly_id ?? fields.floor2_assembly_id ?? '',
     floor2_image_url: row.floor2_image_url ?? meta.floor2_image_url ?? '',

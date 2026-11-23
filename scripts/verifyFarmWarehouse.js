@@ -7,7 +7,7 @@ const root = path.resolve(import.meta.dirname, '..');
 
 const mustInclude = [
   ['src/mobile/mobileAccessManifest.js', 'warehouse_farm_1'],
-  ['src/mobile/mobileAccessManifest.js', 'delivery_send_farm'],
+  ['src/mobile/mobileAccessManifest.js', 'delivery_farm'],
   ['src/constants/farmWarehouseLocations.js', 'Farm Warehouse 1'],
   ['server/lib/farmWarehouseDelivery.js', 'fetchCatalogForFarmDelivery'],
   ['server/lib/ensureFarmWarehouseLocation.js', 'ensureFarmWarehouseLocation'],
@@ -17,6 +17,12 @@ const mustInclude = [
   ['mobile-apps/warehouse-delivery/App.js', 'FarmSendHome'],
   ['mobile-apps/warehouse-delivery/App.js', 'WarehouseFromFarmHome'],
   ['src/mobile/mobileAccessManifest.js', 'delivery_send_warehouse'],
+  ['server/lib/farmWarehouseDelivery.js', 'credit_destination'],
+  ['server/lib/farmWarehouseDelivery.js', 'KITWE_LOCATION_ID'],
+  ['mobile-apps/warehouse-delivery/deliveryKit/screens/WarehouseFromFarmHomeScreen.js', 'deliveryFarmDestKitwe'],
+  ['mobile-apps/warehouse-delivery/deliveryKit/screens/WarehouseFromFarmHomeScreen.js', 'DeliveryWarehouseProductGrid'],
+  ['mobile-apps/warehouse-delivery/deliveryKit/screens/WarehouseFromFarmHomeScreen.js', 'remainingQty'],
+  ['mobile-apps/warehouse-delivery/deliveryKit/components/DeliveryWarehouseProductGrid.js', 'numColumns={2}'],
   ['src/hubs/WarehouseFloorsHubPage.js', "label: 'Farm'"],
 ];
 

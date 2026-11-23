@@ -471,6 +471,21 @@ export async function findActiveQuoteRun(sb, quoteId, productionLineSet = null) 
   return runs.find((row) => runMatchesProductionLineSet(row, lineSet)) || null;
 }
 
+/** Latest quote_order run whether or not it is still open (for reopen after mistaken complete). */
+export async function findLatestQuoteOrderRun(sb, quoteId, productionLineSet = null) {
+  const lineSet = normalizeProductionLineSet(productionLineSet);
+  const { data, error } = await sb
+    .from(RUNS)
+    .select('*')
+    .eq('quote_id', String(quoteId))
+    .eq('source', 'quote_order')
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(error.message || 'Failed to load production run');
+  const runs = data || [];
+  if (!lineSet) return runs[0] || null;
+  return runs.find((row) => runMatchesProductionLineSet(row, lineSet)) || runs[0] || null;
+}
+
 function quoteRunMeta(run) {
   return run?.metadata && typeof run.metadata === 'object' ? run.metadata : {};
 }
@@ -660,7 +675,6 @@ export async function completeQuoteProductionOrder(sb, {
   destination = 'delivery',
   productionLineSet = null,
 } = {}) {
-  void userId;
   const qid = String(quoteId || '').trim();
   const lineSet = normalizeProductionLineSet(productionLineSet);
   if (!qid) throw new Error('quote_id required');
@@ -714,25 +728,33 @@ export async function completeQuoteProductionOrder(sb, {
     }
   } else {
     routePatch.completed_at = now;
-    routePatch.metadata = routeMeta;
+    routePatch.metadata = { ...routeMeta, production_locked: true };
   }
   const { error: routeDoneErr } = await sb.from(ROUTING).update(routePatch).eq('quote_id', qid);
   if (routeDoneErr) throw new Error(routeDoneErr.message || 'Failed to update routing completion');
   let floor1Credited = false;
+  let floor1PendingApproval = false;
   const finishQty = Math.max(1, Number(run.product_qty) || 1);
   if (dest === 'floor1' && run.assembly_id) {
-    await creditQuoteAssemblyUnitsToFloor1(sb, { assemblyId: run.assembly_id, qty: finishQty });
-    floor1Credited = true;
+    const { buildPendingFloor1Credit } = await import('./floor1CreditApproval.js');
     const prevMeta = routingRow?.metadata && typeof routingRow.metadata === 'object' ? routingRow.metadata : {};
     await sb.from(ROUTING).update({
       metadata: {
         ...prevMeta,
         finish_destination: 'floor1',
-        factory_stock_added_at: now,
-        floor1_awaiting_hassan: false,
+        factory_stock_added_at: null,
+        floor1_awaiting_hassan: true,
+        production_locked: true,
+        pending_floor1_credit: buildPendingFloor1Credit({
+          assemblyId: run.assembly_id,
+          qty: finishQty,
+          requestedBy: userId,
+          source: 'quote_complete',
+        }),
       },
       updated_at: now,
     }).eq('quote_id', qid);
+    floor1PendingApproval = true;
   }
   if (!skipDeliveryQueue) {
     const { registerQuoteOrderAwaitingDriver } = await import('./warehouseDeliveryAdminQueue.js');
@@ -746,12 +768,43 @@ export async function completeQuoteProductionOrder(sb, {
     });
   }
 
+  let labelJobId = null;
+  try {
+    const aid = String(run.assembly_id || '').trim();
+    let asm = null;
+    if (aid) {
+      const { data } = await sb.from('warehouse_assemblies').select('name, family_sku').eq('id', aid).maybeSingle();
+      asm = data;
+    }
+    const labelName = String(asm?.name || quoteRow?.quote_number || 'Order').trim();
+    const labelSku = String(asm?.family_sku || quoteRow?.quote_number || '').trim();
+    if (labelName && labelSku) {
+      const { enqueueWarehouseProductionLabelJob } = await import('./productionLabelPrint.js');
+      labelJobId = await enqueueWarehouseProductionLabelJob(sb, {
+        name: labelName,
+        sku: labelSku,
+        qty: finishQty,
+        printedBy: 'Production complete',
+        source: 'quote_production_complete',
+        printedAt: new Date(),
+        customerName: routeMeta.customer_name,
+        customerPhone: routeMeta.customer_phone,
+        quoteNumber: quoteRow?.quote_number || null,
+      });
+    }
+  } catch (labelErr) {
+    console.warn('[completeQuoteProductionOrder] label print failed:', labelErr?.message || labelErr);
+  }
+
   return {
     run_id: run.id,
     completed_at: now,
     deferred_delivery_queue: skipDeliveryQueue,
     finish_destination: dest,
     floor1_credited: floor1Credited,
+    floor1_pending_approval: floor1PendingApproval,
+    production_locked: true,
+    label_job_id: labelJobId,
   };
 }
 
@@ -760,22 +813,38 @@ export async function reopenQuoteProductionOrder(sb, {
   quoteId,
   userId = null,
   reason = '',
+  allowReopen = false,
 } = {}) {
   void userId;
   const qid = String(quoteId || '').trim();
   if (!qid) throw new Error('quote_id required');
+  if (!allowReopen) {
+    throw new Error('Completed production orders are locked and cannot be reopened from the workshop.');
+  }
 
   const { routing } = await loadQuoteBundle(sb, qid);
   if (!routing?.sent_to_production_at) throw new Error('Quote has not been sent to production');
-  if (!routing.completed_at && !routing.metadata?.delivery_admin?.stage) {
+
+  const run = await findLatestQuoteOrderRun(sb, qid);
+  if (!run) throw new Error('No production run for this quote');
+
+  const routingOpen = !routing.completed_at && !routing.metadata?.delivery_admin?.stage;
+  if (routingOpen && !run.completed_at) {
     return { quote_id: qid, already_open: true };
   }
 
-  const run = await findActiveQuoteRun(sb, qid);
-  if (!run) throw new Error('No production run for this quote');
-
   const now = new Date().toISOString();
   const meta = { ...(routing.metadata || {}) };
+  if (meta.segment_cards && typeof meta.segment_cards === 'object') {
+    const segment_cards = { ...meta.segment_cards };
+    for (const key of Object.keys(segment_cards)) {
+      const card = segment_cards[key];
+      if (card && typeof card === 'object' && card.completed_at) {
+        segment_cards[key] = { ...card, completed_at: null };
+      }
+    }
+    meta.segment_cards = segment_cards;
+  }
   const prevAdmin = meta.delivery_admin;
   if (prevAdmin && typeof prevAdmin === 'object') {
     meta.delivery_admin_cancelled = { ...prevAdmin, cancelled_at: now };

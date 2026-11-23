@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"/><title>Print previews</title>
+<style>
+  body { font-family: Segoe UI, sans-serif; margin: 24px; background: #e8eef4; color: #0f172a; }
+  h1 { margin: 0 0 8px; }
+  h2 { margin-top: 32px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+  .card { background: #fff; border: 1px solid #cbd5e1; border-radius: 10px; padding: 12px; }
+  .card img { width: 100%; max-width: 320px; height: auto; border: 1px solid #e2e8f0; background: #fff; }
+  iframe { width: 100%; height: 480px; border: 1px solid #cbd5e1; background: #fff; }
+  a { color: #1e3a5f; }
+</style></head>
+<body>
+  <h1>Zebra labels + A4 delivery notes</h1>
+  <p>Folder: <code>docs/print-previews</code>. Labels are 80×68 mm. Notes are A4 from live HTML.</p>
+  <p><a href="ALL-zebra-labels.pdf">ALL-zebra-labels.pdf</a> · <a href="README.md">README</a></p>
+  <h2>Zebra</h2>
+  <div class="grid">
+    
+      <div class="card">
+        <strong>Production / Floor 2 / Farm→Floor 2</strong>
+        <p><img src="zebra-labels/01-production-standard.png" alt="Production / Floor 2 / Farm→Floor 2"/></p>
+        
+      </div>
+      <div class="card">
+        <strong>Production with Color / Pack / Dims</strong>
+        <p><img src="zebra-labels/02-production-color-box-dims.png" alt="Production with Color / Pack / Dims"/></p>
+        
+      </div>
+      <div class="card">
+        <strong>Sold / warehouse storage</strong>
+        <p><img src="zebra-labels/03-storage-sale.png" alt="Sold / warehouse storage"/></p>
+        
+      </div>
+      <div class="card">
+        <strong>Return / repair customer pickup</strong>
+        
+        <p><iframe src="zebra-labels/04-return-customer.html"></iframe></p>
+      </div>
+  </div>
+  <h2>A4 delivery notes</h2>
+  
+    <div class="card" style="margin-bottom:16px">
+      <strong>01-kitwe-floor1-delivery</strong> · kind <code>delivery</code> · WHD0000000042
+      <p><a href="a4-delivery-notes/01-kitwe-floor1-delivery.html">HTML</a> · <a href="a4-delivery-notes/01-kitwe-floor1-delivery.pdf">PDF</a></p>
+      <iframe src="a4-delivery-notes/01-kitwe-floor1-delivery.html"></iframe>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <strong>02-sold-delivery</strong> · kind <code>sold_delivery</code> · SLD0000000003
+      <p><a href="a4-delivery-notes/02-sold-delivery.html">HTML</a> · <a href="a4-delivery-notes/02-sold-delivery.pdf">PDF</a></p>
+      <iframe src="a4-delivery-notes/02-sold-delivery.html"></iframe>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <strong>03-farm-delivery</strong> · kind <code>farm_delivery</code> · FRM0000000001
+      <p><a href="a4-delivery-notes/03-farm-delivery.html">HTML</a> · <a href="a4-delivery-notes/03-farm-delivery.pdf">PDF</a></p>
+      <iframe src="a4-delivery-notes/03-farm-delivery.html"></iframe>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <strong>04-farm-return</strong> · kind <code>farm_return</code> · WFLR0000000001
+      <p><a href="a4-delivery-notes/04-farm-return.html">HTML</a> · <a href="a4-delivery-notes/04-farm-return.pdf">PDF</a></p>
+      <iframe src="a4-delivery-notes/04-farm-return.html"></iframe>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <strong>05-repair-delivery</strong> · kind <code>repair_delivery</code> · RO0000000001
+      <p><a href="a4-delivery-notes/05-repair-delivery.html">HTML</a> · <a href="a4-delivery-notes/05-repair-delivery.pdf">PDF</a></p>
+      <iframe src="a4-delivery-notes/05-repair-delivery.html"></iframe>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <strong>06-return-note</strong> · kind <code>return</code> · WHR0000000001
+      <p><a href="a4-delivery-notes/06-return-note.html">HTML</a> · <a href="a4-delivery-notes/06-return-note.pdf">PDF</a></p>
+      <iframe src="a4-delivery-notes/06-return-note.html"></iframe>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <strong>07-return-shipment</strong> · kind <code>return_shipment</code> · WHR0000000002
+      <p><a href="a4-delivery-notes/07-return-shipment.html">HTML</a> · <a href="a4-delivery-notes/07-return-shipment.pdf">PDF</a></p>
+      <iframe src="a4-delivery-notes/07-return-shipment.html"></iframe>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <strong>08-return-customer-delivery</strong> · kind <code>return_customer_delivery</code> · RCD0000000001
+      <p><a href="a4-delivery-notes/08-return-customer-delivery.html">HTML</a> · <a href="a4-delivery-notes/08-return-customer-delivery.pdf">PDF</a></p>
+      <iframe src="a4-delivery-notes/08-return-customer-delivery.html"></iframe>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <strong>09-customer-order-delivery</strong> · kind <code>order_delivery</code> · QT-2026-0144
+      <p><a href="a4-delivery-notes/09-customer-order-delivery.html">HTML</a> · <a href="a4-delivery-notes/09-customer-order-delivery.pdf">PDF</a></p>
+      <iframe src="a4-delivery-notes/09-customer-order-delivery.html"></iframe>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <strong>10-showroom-order-delivery</strong> · kind <code>showroom_delivery</code> · SR-2026-0088
+      <p><a href="a4-delivery-notes/10-showroom-order-delivery.html">HTML</a> · <a href="a4-delivery-notes/10-showroom-order-delivery.pdf">PDF</a></p>
+      <iframe src="a4-delivery-notes/10-showroom-order-delivery.html"></iframe>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <strong>11-set-hierarchy-delivery</strong> · kind <code>delivery</code> · WHD0000000107
+      <p><a href="a4-delivery-notes/11-set-hierarchy-delivery.html">HTML</a> · <a href="a4-delivery-notes/11-set-hierarchy-delivery.pdf">PDF</a></p>
+      <iframe src="a4-delivery-notes/11-set-hierarchy-delivery.html"></iframe>
+    </div>
+</body></html>

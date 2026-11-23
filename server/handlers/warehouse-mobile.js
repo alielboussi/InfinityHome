@@ -1284,11 +1284,11 @@ async function assertFarmReturnAccess(user) {
   if (canManageCatalog(user) || isLoginAccessAdmin(user?.email)) return;
   const grant = await mobileAccessGrantForUser(user);
   if (
-    isWorkshopOrDeliveryScreenAllowed(grant, 'delivery_send_warehouse', 'warehouse_delivery_app')
+    isWorkshopOrDeliveryScreenAllowed(grant, 'delivery_farm', 'warehouse_delivery_app')
   ) {
     return;
   }
-  const err = new Error('Send to Warehouse is not enabled for your account in User Access.');
+  const err = new Error('Farm deliveries are not enabled for your account in User Access.');
   err.status = 403;
   throw err;
 }
@@ -1642,6 +1642,20 @@ async function opProductionJobsTrackingList(body, user) {
   });
 }
 
+async function opProductionFloor1Approve(body, user) {
+  const { actorMayApproveFloor1Credit, approvePendingFloor1Credit } = await import('../lib/floor1CreditApproval.js');
+  if (!actorMayApproveFloor1Credit(user)) {
+    throw new Error('Floor 1 stock credit must be approved by Hassan Awad or an administrator.');
+  }
+  const sb = getService();
+  return approvePendingFloor1Credit(sb, {
+    quoteId: body.quote_id || body.quoteId,
+    jobId: body.job_id || body.jobId || body.production_job_id,
+    department: body.department,
+    user,
+  });
+}
+
 async function opUpholsteryJobPause(body, user) {
   await assertProductionKioskUser(user);
   const jobId = String(body.job_id || body.jobId || '').trim();
@@ -1963,6 +1977,7 @@ async function opProductionQuoteReopen(body, user) {
     quoteId: qid,
     userId: user?.id || user?.uid,
     reason: body.reason || 'mistaken complete',
+    allowReopen: true,
   });
 }
 
@@ -1990,13 +2005,24 @@ async function opProductionQuoteComplete(body, user) {
   if (sendToPainting && String(route || '').toLowerCase() === 'carpentry') {
     const productQty = Math.max(1, Math.floor(Number(body.product_qty ?? body.productQty ?? body.quantity) || 1));
     const { sendCarpentryQuoteToPaintingDepartment } = await import('../lib/paintingProductionJobs.js');
-    const painting = await sendCarpentryQuoteToPaintingDepartment(sb, {
-      quoteId,
-      productQty,
-      userId: user?.id || user?.uid,
-      skipClientEnrichment: true,
-    });
-    return { ...result, sent_to_painting: true, painting };
+    try {
+      const painting = await sendCarpentryQuoteToPaintingDepartment(sb, {
+        quoteId,
+        productQty,
+        userId: user?.id || user?.uid,
+        skipClientEnrichment: true,
+      });
+      return { ...result, sent_to_painting: true, painting };
+    } catch (paintingErr) {
+      const { reopenQuoteProductionOrder } = await import('../lib/quoteProductionRouting.js');
+      await reopenQuoteProductionOrder(sb, {
+        quoteId,
+        userId: user?.id || user?.uid,
+        reason: `Painting handoff failed: ${paintingErr?.message || paintingErr}`,
+        allowReopen: true,
+      });
+      throw paintingErr;
+    }
   }
   return result;
 }
@@ -5536,6 +5562,9 @@ export default async function handler(req, res) {
         break;
       case 'production-jobs-tracking-list':
         result = await opProductionJobsTrackingList(body, user);
+        break;
+      case 'production-floor1-approve':
+        result = await opProductionFloor1Approve(body, user);
         break;
       case 'upholstery-job-start':
         result = await opUpholsteryJobStart(body, user);

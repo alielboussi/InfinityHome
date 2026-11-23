@@ -106,12 +106,31 @@ export async function completeCarpentryCatalogManufacture(sb, {
   }
   await recomputeWarehouseLocationStockServer(sb, outputLocationId);
 
+  let label_job_id = null;
+  try {
+    const { enqueueWarehouseProductionLabelJob } = await import('./productionLabelPrint.js');
+    label_job_id = await enqueueWarehouseProductionLabelJob(sb, {
+      name: String(assemblies.name || '').trim(),
+      sku: String(assemblies.family_sku || '').trim(),
+      qty,
+      printedBy: 'Carpentry manufacture',
+      source: 'carpentry_manufacture_floor2',
+      photoFloor: 'floor2',
+      dimLength: assemblies.dim_length,
+      dimWidth: assemblies.dim_width,
+      dimHeight: assemblies.dim_height,
+    });
+  } catch (labelErr) {
+    console.warn('[completeCarpentryCatalogManufacture] label print failed:', labelErr?.message || labelErr);
+  }
+
   return {
     run_id: runId,
     assembly_id: productId,
     product_qty: qty,
     material_lines: materialUsageRows.length,
     floor2_location_id: outputLocationId,
+    label_job_id,
   };
 }
 

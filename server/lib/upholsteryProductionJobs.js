@@ -356,7 +356,21 @@ export async function finishUpholsteryProductionJob(sb, {
   const meta = job.metadata || {};
   const alreadyDeducted = meta.floor2_raw_deducted === true;
   const deductRawOnFinish = meta.floor2_deduct_on_finish === true && !alreadyDeducted;
+  let floor2DeductedNow = alreadyDeducted;
   let storeroomLocsForRecompute = [];
+  if (!alreadyDeducted && !deductRawOnFinish && job.raw_assembly_id) {
+    const { adjustAssemblyInventory, loadAssemblyInventoryQty } = await import('./storeroomBomDeduction.js');
+    const { resolveWarehouseFloor2Location } = await import('../../src/constants/warehouseFloorLocations.js');
+    const { data: locRows } = await sb.from('locations').select('id, name');
+    const floor2Id = resolveWarehouseFloor2Location(locRows || [])?.id;
+    if (floor2Id) {
+      const have = await loadAssemblyInventoryQty(sb, job.raw_assembly_id, floor2Id);
+      if (have < qty) throw new Error(`Insufficient Floor 2 stock (have ${have}, need ${qty})`);
+      await adjustAssemblyInventory(sb, job.raw_assembly_id, floor2Id, -qty);
+      await recomputeWarehouseLocationStockServer(sb, floor2Id);
+      floor2DeductedNow = true;
+    }
+  }
   if (deductRawOnFinish) {
     const { storeroomLocsForRecompute: storeroomLocs } = await consumeUpholsteryRawAndMaterials(
       sb,
@@ -422,6 +436,10 @@ export async function finishUpholsteryProductionJob(sb, {
       printedBy: labelPrintedBy,
       source: 'warehouse_production_app',
       printedAt: new Date(),
+      photoFloor: 'floor2',
+      customerName: job.metadata?.customer_name,
+      customerPhone: job.metadata?.customer_phone,
+      quoteNumber: job.metadata?.quote_number,
     });
     if (!labelJobId) {
       labelPrintWarning = 'Stock updated but labels were not sent to the printer (Zebra Weblink is not configured on the server).';
@@ -434,22 +452,26 @@ export async function finishUpholsteryProductionJob(sb, {
   let deliveryQueued = false;
   const storeroomLocs = [...storeroomIds.map((id) => ({ id })), ...storeroomLocsForRecompute];
 
+  let pendingFloor1 = null;
   if (dest === 'floor1') {
-    const credited = await creditUpholsteryFinishedOutput(sb, ctx, qty);
-    output.qty_before = credited.qty_before;
-    output.qty_after = credited.qty_after;
+    const { buildPendingFloor1Credit } = await import('./floor1CreditApproval.js');
+    pendingFloor1 = buildPendingFloor1Credit({
+      assemblyId: output.output_assembly_id,
+      qty,
+      requestedBy: userId,
+      requestedEmail: user?.email,
+      source: 'upholstery_job',
+    });
     await logWarehouseProductionStockIncrease({
       user,
-      assembly: credited.outputAssembly || output.outputAssembly,
+      assembly: output.outputAssembly,
       delta: qty,
-      qtyBefore: credited.qty_before,
-      qtyAfter: credited.qty_after,
+      qtyBefore: 0,
+      qtyAfter: 0,
       warehouseLocationId: WAREHOUSE_FACTORY_LOCATION_ID,
-      source: 'warehouse_production_app_floor1',
+      source: 'warehouse_production_app_floor1_pending',
     });
-    floor1Credited = true;
-    await recomputeUpholsteryManufactureLocations(sb, ctx, storeroomLocs, { includeFactory: true });
-    await recomputeWarehouseLocationStockServer(sb, WAREHOUSE_FACTORY_LOCATION_ID);
+    await recomputeUpholsteryManufactureLocations(sb, ctx, storeroomLocs);
   } else {
     await logWarehouseProductionStockIncrease({
       user,
@@ -473,9 +495,12 @@ export async function finishUpholsteryProductionJob(sb, {
       production_run_id: runErr ? null : runId,
       label_job_id: labelJobId ?? null,
       label_print_warning: labelPrintWarning ?? null,
-      floor2_raw_deducted: alreadyDeducted || deductRawOnFinish || meta.floor2_raw_deducted === true,
+      floor2_raw_deducted: floor2DeductedNow || deductRawOnFinish || meta.floor2_raw_deducted === true,
       finish_destination: dest,
       floor1_credited: floor1Credited,
+      production_locked: true,
+      floor1_awaiting_hassan: dest === 'floor1',
+      pending_floor1_credit: pendingFloor1,
     }),
   });
 

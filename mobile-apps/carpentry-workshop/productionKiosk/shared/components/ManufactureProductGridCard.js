@@ -9,12 +9,15 @@ export default function ManufactureProductGridCard({
   qty,
   busy = false,
   onPress,
+  onLongPress,
   disabled = false,
 }) {
   const qtyLabel = `×${Math.max(0, Math.floor(Number(qty) || 0))}`;
   return (
     <Pressable
       onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={420}
       disabled={disabled || busy}
       style={({ pressed }) => [
         styles.card,

@@ -164,6 +164,8 @@ const UI_STRINGS = {
   quoteOrderScreenTitle: { en: 'Order', ar: 'طلب' },
   quoteOrderTimer: { en: 'Production timer', ar: 'مؤقت الإنتاج' },
   quoteOrderAcceptStart: { en: 'Accept & start', ar: 'قبول وبدء' },
+  quoteOrderPause: { en: 'Pause', ar: 'إيقاف مؤقت' },
+  quoteOrderResume: { en: 'Resume', ar: 'استئناف' },
   quoteOrderEnd: { en: 'End', ar: 'إنهاء' },
   quoteOrderEndConfirmTitle: { en: 'End production', ar: 'إنهاء الإنتاج' },
   quoteOrderEndConfirmBody: { en: 'Complete this order?', ar: 'إكمال هذا الطلب؟' },

@@ -31,6 +31,7 @@ import {
 import { executeSendQuoteOrder } from './services/sendQuoteOrderFlow';
 import { isValidProductionRoute, pickQuoteProductionRouteForSend } from './services/quoteProductionApi';
 import { isQuoteCustomerOrder } from './utils/quoteCustomerOrder';
+import { assertZambiaNationalPhone } from './utils/zambiaPhoneDigits';
 import {
   buildHassanCustomerQuoteRoutingMetadata,
   readQuoteItemFloor2AssemblyId,
@@ -70,6 +71,8 @@ import {
   readQuoteDimensionSets,
 } from './utils/quoteProductionItemFields';
 import QuoteLineDimensionSets from './components/QuoteLineDimensionSets';
+import QuoteLineAccessorySubcategoryFields from './components/QuoteLineAccessorySubcategoryFields';
+import { resolveLineAccessorySubcategories } from './utils/warehouseAccessoryCatalog';
 import QuoteRowActionsDropdown from './components/QuoteRowActionsDropdown';
 
 function htmlToPlainPreview(html) {
@@ -1246,12 +1249,21 @@ export function QuotationCreateView({ quoteId, onBackHome, onSaved, hassanOrderC
       unit_price: Number(qp.price || 0),
       image_url: qp.image_url,
       qr_code_url: qp.qr_code_url,
+      accessory_picks: [],
+      accessory_subcategory_fields: resolveLineAccessorySubcategories({
+        item: { name: qp.name, sku: qp.sku, family_sku: qp.sku },
+        assemblies: [...(floor2AssemblyById?.values?.() || [])],
+      }),
       ...applyQuoteDimensionSetsToLineFields([{ dim_l_cm: '', dim_w_cm: '', dim_h_cm: '' }]),
     }]);
     setAddSearch('');
   };
 
   const addItemFromFloor2 = (group) => {
+    if (hassanOrderCreateLayout) {
+      alert('Customer orders can only use products from Quotationer → Products.');
+      return;
+    }
     if (locked) return;
     if (productionRouteMissing) {
       alert('Select Upholstery, Carpentry, or Aluminum before adding products.');
@@ -1290,6 +1302,11 @@ export function QuotationCreateView({ quoteId, onBackHome, onSaved, hassanOrderC
         floor2_wip_line: true,
         floor2_stock_hint: stockQty,
       },
+      accessory_picks: [],
+      accessory_subcategory_fields: resolveLineAccessorySubcategories({
+        item: { name: group.familyBase, floor2_assembly_id: aid },
+        assemblies: [...(floor2AssemblyById?.values?.() || [])],
+      }),
       ...applyQuoteDimensionSetsToLineFields([{ dim_l_cm: '', dim_w_cm: '', dim_h_cm: '' }]),
     }]);
     setFloor2Search('');
@@ -1420,9 +1437,31 @@ export function QuotationCreateView({ quoteId, onBackHome, onSaved, hassanOrderC
       return;
     }
     if (locked) return;
+    const saveItems = getNormalizedItems();
+    if (hassanOrderCreateLayout) {
+      const floor2Line = saveItems.find((it) => readQuoteItemFloor2AssemblyId(it) || it.floor2_wip_line);
+      if (floor2Line) {
+        alert('Customer orders can only use products from Quotationer → Products.');
+        return;
+      }
+      const missingCatalog = saveItems.find((it) => !String(it.quote_product_id || '').trim());
+      if (missingCatalog) {
+        alert('Customer orders can only use products from Quotationer → Products.');
+        return;
+      }
+      const selectedCustomer = (quoteCustomers || []).find((c) => String(c.id) === String(quote.customer_id));
+      if (selectedCustomer?.phone) {
+        try {
+          assertZambiaNationalPhone(selectedCustomer.phone, '+260');
+        } catch (phoneErr) {
+          alert(phoneErr.message || phoneErr);
+          return;
+        }
+      }
+    }
     setSaving(true);
     try {
-      const payload = { id: currentQuoteId || undefined, quote, items: getNormalizedItems(), vatChoice };
+      const payload = { id: currentQuoteId || undefined, quote, items: saveItems, vatChoice };
       const out = await fetchQuotationWrite(null, payload);
       const createdQuoteId = out.id;
       if (!createdQuoteId) throw new Error('Quote saved but no id returned');
@@ -1910,6 +1949,14 @@ export function QuotationCreateView({ quoteId, onBackHome, onSaved, hassanOrderC
                   if (!custName.trim()) return;
                   const clean = String(custPhone||'').replace(/\s+/g, '');
                   const fullPhone = clean ? `${custPrefix}${clean.replace(/^\+?(260|243)/, '')}` : null;
+                  try {
+                    if (custPrefix === '+260' || (fullPhone && /^\+?260/.test(fullPhone))) {
+                      assertZambiaNationalPhone(clean || fullPhone, custPrefix);
+                    }
+                  } catch (phoneErr) {
+                    alert(phoneErr.message || phoneErr);
+                    return;
+                  }
                   const normalizedName = titleCaseWords(custName.trim());
                   const nameKey = canonicalName(normalizedName);
                   const phoneKey = normalizePhone(fullPhone);
@@ -1961,10 +2008,10 @@ export function QuotationCreateView({ quoteId, onBackHome, onSaved, hassanOrderC
               <div className="hassan-quote-create-product-row">
                 <input
                   className="quotes-input hassan-product-search"
-                  placeholder={productionRouteMissing ? 'Select workshop route first' : 'Search quote products or Floor 2 WIP (name / SKU)'}
+                  placeholder={productionRouteMissing ? 'Select workshop route first' : 'Search quotation products (name / description)'}
                   value={addSearch}
                   onChange={e => setAddSearch(e.target.value)}
-                  aria-label="Search quote products or Floor 2 WIP"
+                  aria-label="Search quotation products"
                   disabled={locked || productionRouteMissing}
                   style={{ opacity: productionRouteMissing ? 0.65 : 1 }}
                 />
@@ -2055,7 +2102,7 @@ export function QuotationCreateView({ quoteId, onBackHome, onSaved, hassanOrderC
                       <button className={`action-button ${ENT_BTN_PRIMARY}`} disabled={locked || productionRouteMissing} onClick={() => addItemFromQuoteProduct(p)}>Add</button>
                     </div>
                   ))}
-                {hassanOrderCreateLayout && canManageProductionRouting && hassanAddSearchFloor2Results.map((g) => {
+                {false && hassanOrderCreateLayout && canManageProductionRouting && hassanAddSearchFloor2Results.map((g) => {
                   const aid = String(g.assemblyIds?.[0] || '');
                   const asm = floor2AssemblyById.get(aid);
                   const img = readWarehouseFloor2WipImageUrl(asm) || asm?.image_url || '';
@@ -2087,14 +2134,14 @@ export function QuotationCreateView({ quoteId, onBackHome, onSaved, hassanOrderC
                   if (!isActiveQuoteProduct(p)) return false;
                   const s = addSearch.trim().toLowerCase();
                   return s && ((p.name||'').toLowerCase().includes(s) || (p.description||'').toLowerCase().includes(s));
-                })) && !(hassanOrderCreateLayout && hassanAddSearchFloor2Results.length) && (
-                  <div style={{ color:'#8ab' }}>No matching quote products or Floor 2 WIP</div>
+                })) && (
+                  <div style={{ color:'#8ab' }}>No matching quotation products. Add them under Quotationer → Products.</div>
                 )}
               </div>
             )}
           </div>
 
-          {canManageProductionRouting && !hassanOrderCreateLayout && (
+          {false && canManageProductionRouting && !hassanOrderCreateLayout && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
               <div style={{ fontWeight: 700, fontSize: 14 }}>Floor 2 WIP templates</div>
               <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>
@@ -2245,11 +2292,20 @@ export function QuotationCreateView({ quoteId, onBackHome, onSaved, hassanOrderC
                             </div>
                           ) : null}
                           {(showUpholsteryMeta || showCarpentryMeta || showAluminumMeta) ? (
-                            <QuoteLineDimensionSets
-                              item={it}
-                              locked={locked}
-                              onPatch={(patch) => updateItem(it.id, patch)}
-                            />
+                            <div className="quotes-line-upholstery-spec-row">
+                              <QuoteLineDimensionSets
+                                item={it}
+                                locked={locked}
+                                onPatch={(patch) => updateItem(it.id, patch)}
+                              />
+                              {showUpholsteryMeta ? (
+                                <QuoteLineAccessorySubcategoryFields
+                                  item={it}
+                                  locked={locked}
+                                  onPatch={(patch) => updateItem(it.id, patch)}
+                                />
+                              ) : null}
+                            </div>
                           ) : null}
                           {showAluminumMeta ? (
                             <>
@@ -2629,6 +2685,9 @@ function QuotesCustomersView({ onBackHome }) {
     try {
       const clean = String(phone || '').replace(/\s+/g, '');
       const fullPhone = clean ? `${prefix}${clean.replace(/^\+?(260|243)/, '')}` : null;
+      if (prefix === '+260' || (fullPhone && /^\+?260/.test(fullPhone))) {
+        assertZambiaNationalPhone(clean || fullPhone, prefix);
+      }
       const normalizedName = titleCaseWords(name);
       const nameKey = canonicalName(normalizedName);
       const phoneKey = normalizePhone(fullPhone);

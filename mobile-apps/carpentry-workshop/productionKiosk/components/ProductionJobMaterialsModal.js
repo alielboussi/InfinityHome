@@ -125,9 +125,7 @@ export default function ProductionJobMaterialsModal({
   }, [visible, initialLines]);
 
   const storeroomDeductionOnly = jobKind === 'painting' || !allowFloor2WipDeduction;
-  const isHassanQuoteMaterials = !storeroomDeductionOnly
-    && jobKind === 'quote'
-    && ['carpentry', 'upholstery'].includes(String(productionRoute || '').toLowerCase());
+  const isHassanQuoteMaterials = false;
 
   const loadCatalog = useCallback(async () => {
     setLoading(true);

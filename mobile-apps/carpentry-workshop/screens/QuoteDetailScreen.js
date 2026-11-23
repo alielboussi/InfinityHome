@@ -37,18 +37,18 @@ import {
   QuoteProductionFloor2ShortfallBanner,
   QuoteProductionLineSetBadge,
   QuoteProductionOrderBadges,
-  productionQuoteDetailCustomerLabel,
+  isProductionQuoteShowroomOrder,
   useProductionQuoteArabicMap,
 } from '../shared/quoteProductionOrderUi';
 import {
   QuoteProductionDispositionModal,
   QuoteProductionWorkshopLineRows,
 } from '../productionKiosk/shared/quoteProductionPartialUi';
-import { displayQuoteFieldValue } from '../shared/quoteArabicTranslate';
 import {
   applyQuoteOrderTimerFrozenPatch,
   isQuoteOrderFullyCompleteLines,
 } from '../shared/lib/quoteOrderTimerFreeze';
+import { computeQuoteOrderElapsedMs } from '../shared/lib/quoteOrderElapsed';
 
 export default function QuoteDetailScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
@@ -113,16 +113,9 @@ export default function QuoteDetailScreen({ route, navigation }) {
   }, [accepted, completed, startedAt, isPaused]);
 
   const elapsedLabel = useMemo(() => {
-    if (!accepted) return '—';
-    if (completed) {
-      const frozen = Math.max(0, Number(quote.accumulated_ms) || accumulatedMs);
-      return frozen > 0 ? formatElapsed(frozen) : '—';
-    }
-    if (isPaused) return formatElapsed(accumulatedMs);
-    if (!startedAt) return '—';
-    const runningMs = Math.max(0, tick - new Date(startedAt).getTime());
-    return formatElapsed(accumulatedMs + runningMs);
-  }, [startedAt, accepted, completed, tick, isPaused, accumulatedMs]);
+    if (!accepted && !quote.run_started_at) return '—';
+    return formatElapsed(computeQuoteOrderElapsedMs({ ...quote, accepted_at: quote.accepted_at || startedAt }, tick));
+  }, [quote, accepted, startedAt, tick]);
 
   const lines = Array.isArray(quote.lines) ? quote.lines : [];
   const arabicExtraPhrases = useMemo(
@@ -135,13 +128,9 @@ export default function QuoteDetailScreen({ route, navigation }) {
     fetchProductionQuoteArabicTranslations,
     arabicExtraPhrases,
   );
-  const customerName = productionQuoteDetailCustomerLabel(
-    quote,
-    tUi,
-    locale,
-    arabicMap,
-    displayQuoteFieldValue,
-  );
+  const customerName = isProductionQuoteShowroomOrder(quote)
+    ? tUi('showroomOrderDetailLabel', locale)
+    : (String(quote.customer_name || '').trim() || '—');
 
   const onAccept = async () => {
     const snapshot = quote;
@@ -251,8 +240,6 @@ export default function QuoteDetailScreen({ route, navigation }) {
   }, [lines, tick]);
 
   const finishQuote = async ({ sendToPainting = false, destination = 'delivery' } = {}) => {
-    setQuote((prev) => applyQuoteOrderTimerFrozenPatch(prev, { tick }));
-    setCompleted(true);
     setBusy(true);
     const finishNotice = sendToPainting
       ? tUi('carpentryQuoteSentToPainting', locale)
@@ -267,6 +254,8 @@ export default function QuoteDetailScreen({ route, navigation }) {
       if (sendToPainting && !result?.sent_to_painting) {
         await sendCarpentryQuoteToPainting(quoteId);
       }
+      setQuote((prev) => applyQuoteOrderTimerFrozenPatch(prev, { tick }));
+      setCompleted(true);
       setBusy(false);
       navigation.navigate({
         name: 'Quotes',
@@ -275,6 +264,8 @@ export default function QuoteDetailScreen({ route, navigation }) {
       });
     } catch (e) {
       setBusy(false);
+      setCompleted(Boolean(quote?.completed_at));
+      void reloadQuote({ quiet: true });
       Alert.alert(tUi('quoteOrderFailed', locale), e?.message || '');
     }
   };
@@ -310,47 +301,42 @@ export default function QuoteDetailScreen({ route, navigation }) {
         {loadingOrder ? (
           <ActivityIndicator color={theme.primary} style={{ marginVertical: 12 }} />
         ) : null}
-        <Text style={[styles.quoteNum, { textAlign }]}>{quote.quote_number || quoteId}</Text>
-        <QuoteProductionOrderBadges quote={quote} textAlign={textAlign} tUi={tUi} locale={locale} />
+        <Text style={styles.quoteNumRight}>{quote.quote_number || quoteId}</Text>
+        <QuoteProductionOrderBadges quote={quote} textAlign={textAlign} tUi={tUi} locale={locale} align="center" />
         <QuoteProductionLineSetBadge quote={quote} textAlign={textAlign} tUi={tUi} locale={locale} />
         <QuoteProductionFloor2ShortfallBanner quote={quote} textAlign={textAlign} tUi={tUi} locale={locale} />
-        <Text style={[styles.name, { textAlign }]}>{customerName}</Text>
-        <Text style={[styles.phone, { textAlign }]}>{quote.customer_phone || '—'}</Text>
+        <Text style={styles.nameCenter}>{customerName}</Text>
+        <Text style={styles.phoneCenter}>{isProductionQuoteShowroomOrder(quote) ? '—' : (quote.customer_phone || '—')}</Text>
         <View style={styles.timerBox}>
           <Text style={[styles.timerLabel, { textAlign }]}>{tUi('quoteOrderTimer', locale)}</Text>
           <Text style={styles.timer}>{elapsedLabel}</Text>
         </View>
-        {!accepted && !completed ? (
-          <Pressable style={[kiosk.btn, styles.actionBtn]} disabled={busy} onPress={onAccept}>
-            <Text style={kiosk.btnText}>{tUi('quoteOrderAcceptStart', locale)}</Text>
-          </Pressable>
+        {completed ? (
+          <Text style={[kiosk.metaLine, { textAlign: 'center', marginBottom: 12 }]}>
+            {tUi('quoteOrderLockedViewOnly', locale)}
+          </Text>
         ) : null}
-        {accepted && !completed ? (
+        {!completed ? (
           <View style={styles.orderControlRow}>
-            {isPaused ? (
-              <Pressable
-                style={[kiosk.btn, kiosk.btnPrimary, styles.orderControlBtn]}
-                disabled={busy}
-                onPress={onResume}
-              >
-                <Text style={[kiosk.btnText, kiosk.btnPrimaryText]}>{tUi('quoteOrderResume', locale)}</Text>
+            {!accepted || isPaused ? (
+              <Pressable style={styles.iconControl} disabled={busy} onPress={accepted ? onResume : onAccept}>
+                <MaterialCommunityIcons name="play-circle" size={56} color="#22c55e" />
+                <Text style={styles.iconControlLabel}>
+                  {accepted ? tUi('quoteOrderResume', locale) : tUi('quoteOrderAcceptStart', locale)}
+                </Text>
               </Pressable>
             ) : (
-              <Pressable
-                style={[kiosk.btn, styles.orderControlBtn, styles.pauseBtn]}
-                disabled={busy}
-                onPress={onPause}
-              >
-                <Text style={kiosk.btnText}>{tUi('quoteOrderPause', locale)}</Text>
+              <Pressable style={styles.iconControl} disabled={busy} onPress={onPause}>
+                <MaterialCommunityIcons name="pause-circle" size={56} color="#f59e0b" />
+                <Text style={styles.iconControlLabel}>{tUi('quoteOrderPause', locale)}</Text>
               </Pressable>
             )}
-            <Pressable
-              style={[kiosk.btn, styles.orderControlBtn, styles.danger]}
-              disabled={busy}
-              onPress={onComplete}
-            >
-              <Text style={kiosk.btnText}>{tUi('quoteOrderEnd', locale)}</Text>
-            </Pressable>
+            {accepted ? (
+              <Pressable style={styles.iconControl} disabled={busy} onPress={onComplete}>
+                <MaterialCommunityIcons name="stop-circle" size={56} color={theme.danger} />
+                <Text style={styles.iconControlLabel}>{tUi('quoteOrderEnd', locale)}</Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
         <Text style={[kiosk.label, styles.section, { textAlign }]}>{tUi('quoteOrderMaterials', locale)}</Text>
@@ -458,13 +444,13 @@ export default function QuoteDetailScreen({ route, navigation }) {
         tUi={tUi}
         locale={locale}
         choices={[
-          { key: 'floor1', label: tUi('quoteLineHandoffFloor1', locale) },
+          { key: 'delivery', label: tUi('quoteLineHandoffDelivery', locale) },
           { key: 'painting', label: tUi('quoteLineHandoffPainting', locale) },
         ]}
         onPick={(key) => {
           setEndDestVisible(false);
           if (key === 'painting') void finishQuote({ sendToPainting: true });
-          else void finishQuote({ destination: 'floor1' });
+          else void finishQuote({ destination: 'delivery' });
         }}
         onCancel={() => setEndDestVisible(false)}
       />
@@ -476,7 +462,7 @@ export default function QuoteDetailScreen({ route, navigation }) {
         jobId={quoteId}
         productionRoute="carpentry"
         initialLines={quote.manual_material_lines || []}
-        allowFloor2WipDeduction={false}
+        allowFloor2WipDeduction={true}
         onClose={() => setMaterialsOpen(false)}
         onSaved={async () => {
           setMaterialsOpen(false);
@@ -491,8 +477,20 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.bg },
   scroll: { flex: 1 },
   quoteNum: { color: theme.primary, fontWeight: '700', fontSize: 18, marginBottom: 4 },
+  quoteNumRight: {
+    color: theme.primary,
+    fontWeight: '800',
+    fontSize: 18,
+    marginBottom: 8,
+    textAlign: 'right',
+    alignSelf: 'stretch',
+  },
   name: { color: theme.text, fontSize: 17, fontWeight: '600' },
+  nameCenter: { color: theme.text, fontSize: 17, fontWeight: '600', textAlign: 'center' },
   phone: { color: theme.textMuted, fontSize: 13, marginTop: 4 },
+  phoneCenter: { color: theme.textMuted, fontSize: 13, marginTop: 4, textAlign: 'center' },
+  iconControl: { flex: 1, alignItems: 'center', paddingVertical: 8 },
+  iconControlLabel: { color: '#e2e8f0', fontSize: 12, fontWeight: '700', marginTop: 4, textAlign: 'center' },
   timerBox: { marginVertical: 16, padding: 16, backgroundColor: theme.surface, borderRadius: 12 },
   timerLabel: { color: theme.textMuted },
   timer: { color: theme.primary, fontSize: 28, fontWeight: '700', marginTop: 8, textAlign: 'center' },

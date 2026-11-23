@@ -49,14 +49,10 @@ function grantForDeliverySave(grant) {
   );
   const farmAllowed = isWorkshopOrDeliveryScreenAllowed(
     grant,
-    'delivery_send_farm',
+    'delivery_farm',
     'warehouse_delivery_app',
   );
-  const warehouseAllowed = isWorkshopOrDeliveryScreenAllowed(
-    grant,
-    'delivery_send_warehouse',
-    'warehouse_delivery_app',
-  );
+  const farmRow = buildMobileScreenAccessRow(farmAllowed);
   return {
     ...grant,
     warehouse_delivery_app: anyAllowed ? 'allow' : 'deny',
@@ -64,8 +60,11 @@ function grantForDeliverySave(grant) {
     screens: {
       ...(grant.screens || {}),
       kitwe_send_delivery: buildMobileScreenAccessRow(kitweAllowed),
-      farm_send_delivery: buildMobileScreenAccessRow(farmAllowed),
-      warehouse_send_farm: buildMobileScreenAccessRow(warehouseAllowed),
+      delivery_farm: farmRow,
+      delivery_send_farm: farmRow,
+      delivery_send_warehouse: farmRow,
+      farm_send_delivery: farmRow,
+      warehouse_send_farm: farmRow,
     },
   };
 }

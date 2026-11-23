@@ -26,6 +26,7 @@ import { buildPacketsByAssembly } from './utils/warehouseAssemblyPacketPool';
 import { warehouseLabelPrintItemFromRow } from './utils/warehouseRowLabelPrint';
 import { formatAssemblyDimensions } from './utils/warehouseAssemblySpecs';
 import WarehouseAssemblyCategoryDialog from './components/WarehouseAssemblyCategoryDialog';
+import { isWarehouseAccessorySubcategory } from './utils/warehouseAccessoryCatalog';
 
 function floor2ProductDisplayName(asm, fallback = '') {
   const explicitSetName = String(asm?.metadata?.floor2_set_name || '').trim();
@@ -219,7 +220,11 @@ export default function WarehouseFloor2Page({
   }, [floor2Stock, assemblyById, floor2StockPhysicalOnly]);
 
   const stockFamilyGroups = useMemo(
-    () => floor2StockAsFlatGroups(displayFloor2Stock, assemblyById),
+    () => floor2StockAsFlatGroups(displayFloor2Stock, assemblyById)
+      .filter((group) => {
+        const asm = assemblyById.get(String(group.assemblyIds?.[0] || ''));
+        return !isWarehouseAccessorySubcategory(asm);
+      }),
     [displayFloor2Stock, assemblyById],
   );
 

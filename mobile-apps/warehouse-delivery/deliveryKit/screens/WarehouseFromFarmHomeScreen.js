@@ -46,10 +46,9 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
   const [transferRef, setTransferRef] = useState('');
   const [sessionOpening, setSessionOpening] = useState(false);
   const [cart, setCart] = useState([]);
-  const [draftId, setDraftId] = useState('');
-  const [units, setUnits] = useState('1');
   const [scanOpen, setScanOpen] = useState(false);
   const [scanQtyProduct, setScanQtyProduct] = useState(null);
+  const [creditDestination, setCreditDestination] = useState('');
   const productsRef = useRef(products);
   productsRef.current = products;
 
@@ -95,22 +94,31 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
     return () => { cancelled = true; };
   }, [openSession, locale]);
 
+  const cartQtyById = useMemo(() => {
+    const map = {};
+    for (const row of cart) {
+      map[String(row.assembly_id)] = Math.max(0, Math.floor(Number(row.quantity) || 0));
+    }
+    return map;
+  }, [cart]);
+
+  const remainingQty = useCallback((product) => {
+    const aid = String(product?.assembly_id || product?.id || '').trim();
+    const farm = Math.max(0, Math.floor(Number(product?.farm_qty) || 0));
+    const used = Math.max(0, Math.floor(Number(cartQtyById[aid]) || 0));
+    return Math.max(0, farm - used);
+  }, [cartQtyById]);
+
   const filtered = useMemo(() => {
     const q = String(search || '').trim().toLowerCase();
-    const list = products || [];
-    if (!q) return list.slice(0, 40);
+    const list = [...(products || [])].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+    if (!q) return list;
     return list.filter((p) => {
       const name = String(p.name || '').toLowerCase();
       const sku = String(p.family_sku || '').toLowerCase();
       return name.includes(q) || sku.includes(q);
-    }).slice(0, 40);
+    });
   }, [products, search]);
-
-  const draftProduct = useMemo(
-    () => (products || []).find((p) => String(p.assembly_id || p.id) === String(draftId)) || null,
-    [products, draftId],
-  );
-  const maxUnits = Math.max(0, Math.floor(Number(draftProduct?.farm_qty) || 0));
 
   const addProductToCart = useCallback((product, qtyRaw) => {
     if (!product) {
@@ -121,8 +129,17 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
       return false;
     }
     const aid = String(product.assembly_id || product.id || '').trim();
-    const max = Math.max(0, Math.floor(Number(product.farm_qty) || 0));
+    const farmMax = Math.max(0, Math.floor(Number(product.farm_qty) || 0));
+    const used = Math.max(0, Math.floor(Number(cartQtyById[aid]) || 0));
+    const max = Math.max(0, farmMax - used);
     const qty = Math.max(1, Math.floor(Number(qtyRaw) || 0));
+    if (farmMax < 1 || max < 1) {
+      Alert.alert(
+        tUi('deliveryFarmAlertInsufficient', locale),
+        tUi('deliveryFarmAlertAvailable', locale).replace('{n}', String(farmMax)),
+      );
+      return false;
+    }
     if (qty > max) {
       Alert.alert(
         tUi('deliveryFarmAlertInsufficient', locale),
@@ -134,10 +151,10 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
       const existing = prev.find((row) => row.assembly_id === aid);
       if (existing) {
         const nextQty = existing.quantity + qty;
-        if (nextQty > max) {
+        if (nextQty > farmMax) {
           Alert.alert(
             tUi('deliveryFarmAlertInsufficient', locale),
-            tUi('deliveryFarmAlertExceeds', locale).replace('{n}', String(max)),
+            tUi('deliveryFarmAlertExceeds', locale).replace('{n}', String(farmMax)),
           );
           return prev;
         }
@@ -150,19 +167,11 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
         name: product.name || aid,
         family_sku: product.family_sku || '',
         quantity: qty,
-        max_qty: max,
+        max_qty: farmMax,
       }];
     });
     return true;
-  }, [locale]);
-
-  const addToCart = useCallback(() => {
-    if (addProductToCart(draftProduct, units)) {
-      setUnits('1');
-      setDraftId('');
-      setSearch('');
-    }
-  }, [addProductToCart, draftProduct, units]);
+  }, [cartQtyById, locale]);
 
   const onScan = useCallback((value) => {
     const hit = matchProductByScan(productsRef.current, value);
@@ -188,7 +197,6 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
   const onScanQtyConfirm = useCallback((qtyRaw) => {
     if (addProductToCart(scanQtyProduct, qtyRaw)) {
       setScanQtyProduct(null);
-      setDraftId('');
       setSearch('');
     }
   }, [addProductToCart, scanQtyProduct]);
@@ -198,6 +206,31 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
       Alert.alert(
         tUi('deliveryFarmAlertEmptyCart', locale),
         tUi('deliveryFarmAlertEmptyCartBody', locale),
+      );
+      return;
+    }
+    if (creditDestination !== 'floor2' && creditDestination !== 'kitwe') {
+      Alert.alert(
+        tUi('deliveryFarmDestTitle', locale),
+        tUi('deliveryFarmDestRequired', locale),
+      );
+      return;
+    }
+    const over = cart.find((line) => {
+      const product = (products || []).find((p) => String(p.assembly_id || p.id) === String(line.assembly_id));
+      const farmMax = Math.max(0, Math.floor(Number(product?.farm_qty ?? line.max_qty) || 0));
+      return Math.floor(Number(line.quantity) || 0) > farmMax || farmMax < 1;
+    });
+    if (over) {
+      Alert.alert(
+        tUi('deliveryFarmAlertInsufficient', locale),
+        tUi('deliveryFarmAlertExceeds', locale).replace(
+          '{n}',
+          String(Math.max(0, Math.floor(Number(
+            (products || []).find((p) => String(p.assembly_id || p.id) === String(over.assembly_id))?.farm_qty
+            ?? over.max_qty,
+          ) || 0))),
+        ),
       );
       return;
     }
@@ -217,6 +250,7 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
       transferRef,
       lines,
       shareGroups,
+      creditDestination,
     });
   };
 
@@ -228,8 +262,15 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
   );
 
   const onGridSelect = useCallback((p) => {
-    setDraftId(String(p.assembly_id || p.id));
-  }, []);
+    if (remainingQty(p) < 1) {
+      Alert.alert(
+        tUi('deliveryFarmAlertInsufficient', locale),
+        tUi('deliveryFarmAlertAvailable', locale).replace('{n}', String(Math.max(0, Number(p.farm_qty) || 0))),
+      );
+      return;
+    }
+    setScanQtyProduct(p);
+  }, [locale, remainingQty]);
 
   const gridImageUrl = useCallback(
     (p) => resolveProductImageUrl(p?.floor2_image_url || p?.image_url || ''),
@@ -237,14 +278,18 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
   );
 
   const gridQtyLabel = useCallback((p) => {
-    const qty = Math.max(0, Number(p.farm_qty) || 0);
-    return tUi('deliveryFarmOnHand', locale).replace('{n}', String(qty));
-  }, [locale]);
+    const remain = remainingQty(p);
+    const farm = Math.max(0, Number(p.farm_qty) || 0);
+    return tUi('deliveryFarmOnHand', locale).replace('{n}', String(remain === farm ? farm : remain));
+  }, [locale, remainingQty]);
+
+  const gridSku = useCallback((p) => String(p?.family_sku || p?.sku || '').trim(), []);
+  const gridDisabled = useCallback((p) => remainingQty(p) < 1, [remainingQty]);
 
   const listHeader = useMemo(() => (
     <>
       <ProductionKioskTopBar
-        title={tUi('deliveryFarmToWarehouseTitle', locale)}
+        title={tUi('dashFarmDeliveries', locale)}
         locale={locale}
         onToggleLocale={toggleLocale}
       />
@@ -259,8 +304,43 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
           <Text style={[kiosk.heroNumber, { textAlign }]}>{transferRef || '—'}</Text>
         )}
         <Text style={[kiosk.metaLine, { textAlign }]}>
-          {tUi('deliveryFarmReturnHint', locale)}
+          {tUi('deliveryFarmFromFixed', locale)}
         </Text>
+        <Text style={[kiosk.label, { textAlign, marginTop: 12 }]}>
+          {tUi('deliveryFarmDestTitle', locale)}
+        </Text>
+        <View style={styles.destRow}>
+          <Pressable
+            style={[
+              styles.destChip,
+              creditDestination === 'floor2' ? styles.destChipOn : null,
+            ]}
+            onPress={() => setCreditDestination('floor2')}
+          >
+            <Text style={[
+              styles.destChipText,
+              creditDestination === 'floor2' ? styles.destChipTextOn : null,
+            ]}
+            >
+              {tUi('deliveryFarmDestFloor2', locale)}
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.destChip,
+              creditDestination === 'kitwe' ? styles.destChipOn : null,
+            ]}
+            onPress={() => setCreditDestination('kitwe')}
+          >
+            <Text style={[
+              styles.destChipText,
+              creditDestination === 'kitwe' ? styles.destChipTextOn : null,
+            ]}
+            >
+              {tUi('deliveryFarmDestKitwe', locale)}
+            </Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={[kiosk.field, styles.searchRow]}>
@@ -290,6 +370,7 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
       ) : null}
     </>
   ), [
+    creditDestination,
     error,
     gridProducts.length,
     loading,
@@ -304,24 +385,6 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
 
   const listFooter = useMemo(() => (
     <>
-      {draftProduct ? (
-        <View style={kiosk.card}>
-          <Text style={[kiosk.label, { textAlign }]}>{tUi('deliveryFarmQtyLabel', locale)}</Text>
-          <TextInput
-            style={[kiosk.input, { textAlign }]}
-            keyboardType="number-pad"
-            value={units}
-            onChangeText={setUnits}
-          />
-          <Text style={[kiosk.metaLine, { textAlign }]}>
-            {tUi('deliveryFarmQtyMax', locale).replace('{n}', String(maxUnits))}
-          </Text>
-          <Pressable style={kiosk.btnPrimaryBlock} onPress={addToCart}>
-            <Text style={kiosk.btnPrimaryBlockText}>{tUi('deliveryFarmAddToCart', locale)}</Text>
-          </Pressable>
-        </View>
-      ) : null}
-
       <Text style={[kiosk.sectionTitle, { textAlign }]}>
         {tUi('deliveryFarmCartTitle', locale).replace('{n}', String(cartTotal))}
       </Text>
@@ -362,25 +425,25 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
       ) : null}
     </>
   ), [
-    addToCart,
     cart,
     cartTotal,
-    draftProduct,
+    creditDestination,
     goSignature,
     locale,
-    maxUnits,
     textAlign,
-    units,
   ]);
 
   return (
     <>
       <DeliveryWarehouseProductGrid
         items={gridProducts}
-        selectedId={draftId}
+        selectedId=""
         onSelect={onGridSelect}
         getImageUrl={gridImageUrl}
         getQtyLabel={gridQtyLabel}
+        getSku={gridSku}
+        isItemDisabled={gridDisabled}
+        extraData={cartQtyById}
         ListHeaderComponent={listHeader}
         ListFooterComponent={listFooter}
         contentContainerStyle={styles.wrap}
@@ -400,7 +463,7 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
         textAlign={textAlign}
         productName={scanQtyProduct?.name || ''}
         productSku={scanQtyProduct?.family_sku || ''}
-        maxQty={Math.max(0, Number(scanQtyProduct?.farm_qty) || 0)}
+        maxQty={scanQtyProduct ? remainingQty(scanQtyProduct) : 0}
         onClose={() => setScanQtyProduct(null)}
         onConfirm={onScanQtyConfirm}
       />
@@ -410,6 +473,20 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   wrap: { flexGrow: 1 },
+  destRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  destChip: {
+    flex: 1,
+    minWidth: 140,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    backgroundColor: '#fff',
+  },
+  destChipOn: { backgroundColor: '#1e3a5f', borderColor: '#1e3a5f' },
+  destChipText: { textAlign: 'center', fontWeight: '700', color: '#334155', fontSize: 13 },
+  destChipTextOn: { color: '#fff' },
   searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   rowSelected: { borderColor: theme.primary, borderWidth: 1 },
   cartRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 8 },

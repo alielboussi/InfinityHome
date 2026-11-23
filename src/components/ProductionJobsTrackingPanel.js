@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { fetchProductionJobsTracking } from '../services/productionJobsTrackingApi';
+import { fetchProductionJobsTracking, approveProductionFloor1Credit } from '../services/productionJobsTrackingApi';
 import { formatWarehouseAdminDateTime } from '../utils/warehouseAdminFormat';
 import { productionDepartmentLabel } from '../utils/productionJobFlowStatus';
 import RunningProductionJobElapsed from './RunningProductionJobElapsed';
@@ -48,7 +48,7 @@ function TrackingDetailLine({ label, value, always = false }) {
   );
 }
 
-function ProductionTrackingCard({ row }) {
+function ProductionTrackingCard({ row, onApproveFloor1, approveBusyId }) {
   const completed = isProductionTrackingJobCompleted(row);
   const live = row.timer_status === 'running' || row.timer_status === 'paused';
   const quoteShape = trackingRowAsQuote(row);
@@ -123,6 +123,21 @@ function ProductionTrackingCard({ row }) {
           )}
         </div>
       </div>
+      {row.pending_floor1_credit ? (
+        <div className="production-tracking-card__actions">
+          <p className="production-tracking-card__line-value">
+            Floor 1 stock is waiting for a second approval (Hassan / admin).
+          </p>
+          <button
+            type="button"
+            className="product-form-btn product-form-btn--primary"
+            disabled={Boolean(approveBusyId)}
+            onClick={() => onApproveFloor1?.(row)}
+          >
+            {approveBusyId === row.id ? 'Approving…' : 'Approve Floor 1 stock'}
+          </button>
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -143,6 +158,7 @@ export default function ProductionJobsTrackingPanel({
   const [department, setDepartment] = useState(initialDepartment || 'all');
   const [trackKind, setTrackKind] = useState('all');
   const [progress, setProgress] = useState(resolvedDefaultProgress);
+  const [approveBusyId, setApproveBusyId] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -160,6 +176,23 @@ export default function ProductionJobsTrackingPanel({
       setLoading(false);
     }
   }, [department, trackKind]);
+
+  const onApproveFloor1 = async (row) => {
+    setApproveBusyId(row.id);
+    setError('');
+    try {
+      await approveProductionFloor1Credit({
+        quoteId: row.quote_id || (String(row.id || '').startsWith('quote:') ? String(row.id).slice(6) : ''),
+        jobId: row.production_job_id || '',
+        department: row.department,
+      });
+      await load();
+    } catch (err) {
+      setError(err?.message || 'Floor 1 approval failed.');
+    } finally {
+      setApproveBusyId('');
+    }
+  };
 
   useEffect(() => { void load(); }, [load]);
 
@@ -221,13 +254,23 @@ export default function ProductionJobsTrackingPanel({
           <h2 className="production-tracking-section-heading">In progress</h2>
         ) : null}
         {inProgress.map((row) => (
-          <ProductionTrackingCard key={`${row.department}:${row.id}`} row={row} />
+          <ProductionTrackingCard
+            key={`${row.department}:${row.id}`}
+            row={row}
+            onApproveFloor1={onApproveFloor1}
+            approveBusyId={approveBusyId}
+          />
         ))}
         {showProgressSections && completed.length ? (
           <h2 className="production-tracking-section-heading">Completed</h2>
         ) : null}
         {completed.map((row) => (
-          <ProductionTrackingCard key={`${row.department}:${row.id}`} row={row} />
+          <ProductionTrackingCard
+            key={`${row.department}:${row.id}`}
+            row={row}
+            onApproveFloor1={onApproveFloor1}
+            approveBusyId={approveBusyId}
+          />
         ))}
       </div>
     </div>

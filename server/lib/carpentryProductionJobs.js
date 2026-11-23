@@ -396,18 +396,15 @@ export async function finishCarpentryProductionJob(sb, {
   let floor1Credited = false;
   let deliveryQueued = false;
 
+  let pendingFloor1 = null;
   if (productId && dest === 'floor1') {
-    const { addFloor2ProductToFloor1 } = await import('./carpentryManufacture.js');
-    await addFloor2ProductToFloor1(sb, {
+    const { buildPendingFloor1Credit } = await import('./floor1CreditApproval.js');
+    pendingFloor1 = buildPendingFloor1Credit({
       assemblyId: productId,
-      productQty: qty,
-      userId,
+      qty,
+      requestedBy: userId,
+      source: 'carpentry_job',
     });
-    if (meta.catalog_manufacture && outputLocationId) {
-      await adjustAssemblyInventory(sb, productId, outputLocationId, -qty);
-      await recomputeWarehouseLocationStockServer(sb, outputLocationId);
-    }
-    floor1Credited = true;
   }
 
   const updated = await saveJobPatch(sb, job.id, {
@@ -420,6 +417,9 @@ export async function finishCarpentryProductionJob(sb, {
       production_run_id: runId || null,
       finish_destination: dest,
       floor1_credited: floor1Credited,
+      production_locked: true,
+      floor1_awaiting_hassan: dest === 'floor1',
+      pending_floor1_credit: pendingFloor1,
     },
   });
 

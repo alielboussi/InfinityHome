@@ -75,6 +75,36 @@ try {
     manufactureLib.includes('floor2_wip_only'),
     'carpentry manufacture must credit Floor 2 WIP',
   );
+  assert(
+    manufactureLib.includes('enqueueWarehouseProductionLabelJob'),
+    'carpentry manufacture finish must print Floor 2 Zebra labels',
+  );
+
+  const manufactureScreen = read('mobile-apps/carpentry-workshop/screens/ManufactureScreen.js');
+  assert(
+    manufactureScreen.includes('onLongPress') && manufactureScreen.includes('sendCarpentryProductToPainting'),
+    'manufacture grid must long-press send to painting',
+  );
+  assert(
+    !manufactureScreen.includes("tUi('manufactureIntro'"),
+    'manufacture page must not show intro above search',
+  );
+
+  const dash = read('mobile-apps/carpentry-workshop/screens/DashboardScreen.js');
+  assert(
+    !dash.includes("key: 'painting'"),
+    'carpentry dashboard must not have Floor 2 to Painting tile',
+  );
+
+  const jobsScreen = read('mobile-apps/carpentry-workshop/screens/JobsScreen.js');
+  assert(
+    !jobsScreen.includes("tUi('upholsteryJobIntro'"),
+    'orders page must not show intro above search',
+  );
+  assert(
+    jobsScreen.includes('quoteBadgeRight') && jobsScreen.includes('play-circle'),
+    'order cards must show QT# top-right and play/pause/stop',
+  );
 
   const jobsLib = read('server/lib/carpentryProductionJobs.js');
   assert(

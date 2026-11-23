@@ -5,10 +5,12 @@
 import {
   isZebraWeblinkPrintConfigured,
   sendWarehouseProductionLabelToZebra,
+  sendZplToZebraPrinter,
 } from './zebraSendFileToPrinter.js';
 import { buildProductPhotoQrUrl } from './productPhotoBySku.js';
 import { resolveLabelPhotoFloor } from './warehouseLabelPhotoFloor.js';
 import { buildWarehouseProductionLabelZpl } from './zebraProductionLabelZpl.js';
+import { buildWarehouseReturnCustomerLabelZpl } from './zebraReturnCustomerLabelZpl.js';
 import { formatProductionLabelBlockDate } from './warehouseProductionLabelCatTime.js';
 
 export async function enqueueWarehouseProductionLabelJob(db, {
@@ -25,11 +27,52 @@ export async function enqueueWarehouseProductionLabelJob(db, {
   dimHeight,
   dimensionsLine,
   photoFloor: photoFloorInput,
+  customerName: customerNameInput,
+  customerPhone: customerPhoneInput,
+  quoteNumber: quoteNumberInput,
 } = {}) {
   const labelName = String(name || '').trim();
-  const labelSku = String(sku || '').trim();
   const copies = Math.max(1, Math.floor(Number(qty) || 0));
+  const customerName = String(customerNameInput || '').trim();
+  const customerPhone = String(customerPhoneInput || '').trim();
+  const quoteNumber = String(quoteNumberInput || '').trim();
+  const labelSku = customerName
+    ? (quoteNumber || String(sku || '').trim())
+    : String(sku || '').trim();
   if (!labelName || !labelSku) return null;
+
+  const printedAtEarly = printedAtInput ? new Date(printedAtInput) : new Date();
+  if (customerName) {
+    const zpl = buildWarehouseReturnCustomerLabelZpl({
+      name: labelName,
+      sku: labelSku,
+      customerName,
+      customerPhone,
+      printedAt: printedAtEarly,
+      copies,
+    });
+    if (isZebraWeblinkPrintConfigured()) {
+      await sendZplToZebraPrinter({ zpl });
+      return 'zebra-weblink';
+    }
+    const { data, error } = await db
+      .from('label_print_jobs')
+      .insert([{
+        payload: {
+          job_type: 'warehouse_customer_order',
+          source,
+          printed_at: printedAtEarly.toISOString(),
+          items: [{ name: labelName, sku: labelSku, qty: copies, zpl }],
+        },
+      }])
+      .select('id')
+      .single();
+    if (error) {
+      console.warn('[productionLabelPrint] customer label enqueue failed:', error.message || error);
+      return null;
+    }
+    return data?.id ? String(data.id) : null;
+  }
 
   const printedAt = printedAtInput ? new Date(printedAtInput) : new Date();
   if (Number.isNaN(printedAt.getTime())) {

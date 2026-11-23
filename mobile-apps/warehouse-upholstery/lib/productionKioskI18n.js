@@ -165,6 +165,10 @@ const UI_STRINGS = {
   quoteOrderPause: { en: 'Pause order', ar: 'إيقاف الطلب' },
   quoteOrderResume: { en: 'Resume order', ar: 'استئناف الطلب' },
   quoteOrderEnd: { en: 'End order', ar: 'إنهاء الطلب' },
+  quoteOrderLockedViewOnly: {
+    en: 'Completed — view only. This order is locked.',
+    ar: 'مكتمل — عرض فقط. هذا الطلب مقفل.',
+  },
   quoteOrderEndConfirmTitle: { en: 'End production', ar: 'إنهاء الإنتاج' },
   quoteOrderEndConfirmBody: { en: 'Complete this order?', ar: 'إكمال هذا الطلب؟' },
   quoteOrderEndTypeOkHint: {
@@ -320,7 +324,7 @@ const UI_STRINGS = {
     ar: 'نفس كتالوج المستودع كصفحة warehouse-products — مخزون المصنع بما فيه إنتاج النجارة.',
   },
   dashUnifiedOrders: { en: 'Orders', ar: 'الطلبات' },
-  badgeManufacture: { en: 'Manufacture', ar: 'تصنيع' },
+  badgeManufacture: { en: 'Production', ar: 'إنتاج' },
   badgeRepair: { en: 'Repair', ar: 'إصلاح' },
   dashManufacture: { en: 'Manufacture', ar: 'تصنيع' },
   dashManufactureSub: {

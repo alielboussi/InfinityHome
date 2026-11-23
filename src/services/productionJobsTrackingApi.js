@@ -61,3 +61,27 @@ export async function fetchProductionJobsTracking({ department, track_kind, limi
   }
   return payload;
 }
+
+export async function approveProductionFloor1Credit({ quoteId, jobId, department } = {}) {
+  const token = await firebaseGetAccessToken();
+  if (!token) throw new Error('Authentication required');
+  const response = await fetch(apiUrl('/api/warehouse-mobile'), {
+    method: 'POST',
+    headers: withApiHeaders({
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    }),
+    body: JSON.stringify({
+      op: 'production-floor1-approve',
+      quote_id: quoteId || undefined,
+      job_id: jobId || undefined,
+      department: department || undefined,
+    }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.ok === false) {
+    throw new Error(payload?.error || `Request failed (${response.status})`);
+  }
+  return payload;
+}

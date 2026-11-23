@@ -4,7 +4,10 @@ import {
   productTitleForTrackingJob,
   productionDepartmentLabel,
 } from './productionJobFlowStatus';
-import { collapseProductionTrackingDisplayRows } from './productionTrackingListUi';
+import {
+  collapseProductionTrackingDisplayRows,
+  isProductionTrackingRowHidden,
+} from './productionTrackingListUi';
 
 function assemblyKey(department, job) {
   if (department === 'upholstery') {
@@ -74,18 +77,24 @@ export function mergeProductionJobsTrackingClient({
   if (!deptFilter || deptFilter === 'all' || deptFilter === 'upholstery') {
     for (const job of upholstery) {
       if (shouldHideBehindPainting('upholstery', job, activePaintingAssemblyIds)) continue;
-      merged.push(jobToTrackingRow('upholstery', job));
+      const row = jobToTrackingRow('upholstery', job);
+      if (isProductionTrackingRowHidden(row)) continue;
+      merged.push(row);
     }
   }
   if (!deptFilter || deptFilter === 'all' || deptFilter === 'carpentry') {
     for (const job of carpentry) {
       if (shouldHideBehindPainting('carpentry', job, activePaintingAssemblyIds)) continue;
-      merged.push(jobToTrackingRow('carpentry', job));
+      const row = jobToTrackingRow('carpentry', job);
+      if (isProductionTrackingRowHidden(row)) continue;
+      merged.push(row);
     }
   }
   if (!deptFilter || deptFilter === 'all' || deptFilter === 'painting') {
     for (const job of painting) {
-      merged.push(jobToTrackingRow('painting', job));
+      const row = jobToTrackingRow('painting', job);
+      if (isProductionTrackingRowHidden(row)) continue;
+      merged.push(row);
     }
   }
 

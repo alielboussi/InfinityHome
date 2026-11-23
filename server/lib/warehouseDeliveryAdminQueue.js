@@ -272,6 +272,7 @@ export async function listRepairDeliveriesForMobile(sb) {
         customer_phone: String(row.customer_phone || '').trim() || null,
         showroom_order,
         customer_order,
+        department: String(meta.repair_department || meta.department || '').toLowerCase() || null,
         status: String(row.status || 'completed'),
         delivery_admin_stage: DELIVERY_ADMIN_STAGE.AWAITING_DRIVER,
         ready_for_delivery_app: true,
@@ -632,16 +633,17 @@ export async function finalizeAdminQueueOnKitweAccept(sb, lines, {
       const { data: row } = await sb.from(RETURNS_TABLE).select('*').eq('id', returnOrderId).maybeSingle();
       if (!row) continue;
       const hasCustomer = Boolean(String(row.customer_name || '').trim());
+      const prevMeta = row.metadata || {};
       await sb.from(RETURNS_TABLE).update({
         status: hasCustomer
           ? WAREHOUSE_RETURN_STATUSES.CUSTOMER_DELIVERED
           : WAREHOUSE_RETURN_STATUSES.SHIPPED,
         updated_at: acceptedAt,
         metadata: {
-          ...(row.metadata || {}),
-          kitwe_restored_at: hasCustomer ? row.metadata?.kitwe_restored_at : acceptedAt,
-          customer_fulfilled_at: hasCustomer ? acceptedAt : row.metadata?.customer_fulfilled_at,
-          ...completedPatch(row.metadata, DELIVERY_ADMIN_KIND.REPAIR),
+          ...prevMeta,
+          customer_fulfilled_at: hasCustomer ? acceptedAt : prevMeta.customer_fulfilled_at,
+          driver_delivery_completed_at: acceptedAt,
+          ...completedPatch(prevMeta, DELIVERY_ADMIN_KIND.REPAIR),
         },
       }).eq('id', returnOrderId);
     }

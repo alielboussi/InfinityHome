@@ -8,7 +8,6 @@ import { useProductionDashboardTileLayout } from '../deliveryKit/lib/productionD
 import { useProductionKioskLocale } from '../deliveryKit/hooks/useProductionKioskLocale';
 import { tUi } from '../deliveryKit/lib/productionKioskI18n';
 import {
-  DELIVERY_APP_SCREENS,
   isWorkshopOrDeliveryScreenAllowed,
 } from '../shared/mobileAccessManifest';
 import { theme } from '../shared/theme';
@@ -78,16 +77,9 @@ export default function DashboardScreen({
     },
     {
       key: 'farm',
-      screenId: 'delivery_send_farm',
+      screenId: 'delivery_farm',
       icon: 'barn',
-      title: tUi('dashSendToFarm', locale),
-      onPress: () => navigation.navigate('FarmSendHome'),
-    },
-    {
-      key: 'warehouseFromFarm',
-      screenId: 'delivery_send_warehouse',
-      icon: 'home-export-outline',
-      title: tUi('dashSendToWarehouse', locale),
+      title: tUi('dashFarmDeliveries', locale),
       onPress: () => navigation.navigate('WarehouseFromFarmHome'),
     },
     {
@@ -124,15 +116,7 @@ export default function DashboardScreen({
         ? isWorkshopOrdersHubAllowed(grant, 'warehouse_delivery_app', t.hubScreenIds)
         : isWorkshopOrDeliveryScreenAllowed(grant, t.screenId, 'warehouse_delivery_app')
     ))
-    : allTiles;
-  if (allowed && tiles.length === 0) {
-    const anyDelivery = DELIVERY_APP_SCREENS.some((s) => (
-      isWorkshopOrDeliveryScreenAllowed(grant, s.id, 'warehouse_delivery_app')
-    ));
-    if (anyDelivery || grant?.warehouse_delivery_app === 'allow') {
-      tiles = allTiles;
-    }
-  }
+    : [];
   const tileCount = Math.max(1, tiles.length);
   const {
     tileWidth, tileHeight, gap, contentWidth,

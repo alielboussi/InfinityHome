@@ -109,7 +109,6 @@ export default function QuotesScreen({ navigation, route, allowed, accessHint, o
           <Text style={[styles.finishBannerText, { textAlign }]}>{finishNotice}</Text>
         </View>
       ) : null}
-      <Text style={[kiosk.hint, styles.intro, { textAlign }]}>{tUi('carpentryQuotesIntro', locale)}</Text>
       {loading && openQuotes.length === 0 ? (
         <ActivityIndicator color={theme.primary} style={{ marginVertical: 12 }} />
       ) : null}
@@ -131,13 +130,13 @@ export default function QuotesScreen({ navigation, route, allowed, accessHint, o
             style={({ pressed }) => [kiosk.card, styles.row, pressed && styles.rowPressed]}
             onPress={() => navigation.navigate('QuoteDetail', { quote: item })}
           >
-            <QuoteProductionListThumb quote={item} textAlign={textAlign} />
-            <QuoteProductionOrderBadges quote={item} textAlign={textAlign} tUi={tUi} locale={locale} />
+            <Text style={styles.quoteNumRight}>{item.quote_number || item.quote_id}</Text>
+            <QuoteProductionOrderBadges quote={item} textAlign={textAlign} tUi={tUi} locale={locale} align="center" />
             <QuoteProductionLineSetBadge quote={item} textAlign={textAlign} tUi={tUi} locale={locale} />
             <QuoteProductionFloor2ShortfallBanner quote={item} textAlign={textAlign} tUi={tUi} locale={locale} />
-            <Text style={styles.quoteNum}>{item.quote_number || item.quote_id}</Text>
-            <Text style={styles.name}>{productionQuoteListTitle(item, tUi, locale)}</Text>
-            <Text style={styles.phone}>
+            <QuoteProductionListThumb quote={item} textAlign={textAlign} />
+            <Text style={styles.nameCenter}>{productionQuoteListTitle(item, tUi, locale)}</Text>
+            <Text style={styles.phoneCenter}>
               {isProductionQuoteShowroomOrder(item) ? '—' : (item.customer_phone || '—')}
             </Text>
             <Text style={styles.meta}>
@@ -174,8 +173,11 @@ const styles = StyleSheet.create({
   row: { marginBottom: 10 },
   rowPressed: { opacity: 0.92 },
   quoteNum: { color: theme.primary, fontWeight: '700', marginBottom: 4, fontSize: 15 },
+  quoteNumRight: { color: theme.primary, fontWeight: '800', marginBottom: 6, fontSize: 15, textAlign: 'right' },
   name: { color: theme.text, fontSize: 17, fontWeight: '600' },
+  nameCenter: { color: theme.text, fontSize: 17, fontWeight: '600', textAlign: 'center' },
   phone: { color: theme.textMuted, fontSize: 13, marginTop: 4 },
+  phoneCenter: { color: theme.textMuted, fontSize: 13, marginTop: 4, textAlign: 'center' },
   meta: { color: theme.textSecondary, fontSize: 12, marginTop: 8 },
   empty: { marginTop: 24 },
   finishBanner: {

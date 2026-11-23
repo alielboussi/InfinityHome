@@ -16,6 +16,8 @@ import {
   warehouseDeliveryReceiverTickRows,
   deliveryEntrySentToCustomer,
   deliveryEntrySkipKitweRetailCatalog,
+  WAREHOUSE_FROM_LOCATION_ID,
+  WAREHOUSE_TO_LOCATION_ID,
 } from '../../src/utils/warehouseDelivery.js';
 import { newUuid } from './uuid.js';
 
@@ -265,8 +267,14 @@ export async function acceptWarehouseDeliveryServer(sb, sessionId, { acceptedBy,
       const r = await moveAdminQueueLineToKitwe(sb, line);
       if (r) moved.push({ lineId: String(line.id), assemblyId: r.assemblyId, qty: r.qty });
     }
-    await movePacketsForDeliveryReceive(sb, standardLines);
-    await moveAssembliesForDeliveryReceive(sb, standardLines);
+    await movePacketsForDeliveryReceive(sb, standardLines, {
+      fromLocationId: session.from_location || WAREHOUSE_FROM_LOCATION_ID,
+      toLocationId: session.to_location || WAREHOUSE_TO_LOCATION_ID,
+    });
+    await moveAssembliesForDeliveryReceive(sb, standardLines, {
+      fromLocationId: session.from_location || WAREHOUSE_FROM_LOCATION_ID,
+      toLocationId: session.to_location || WAREHOUSE_TO_LOCATION_ID,
+    });
   }
   for (const line of toReceive) {
     const metadata = {

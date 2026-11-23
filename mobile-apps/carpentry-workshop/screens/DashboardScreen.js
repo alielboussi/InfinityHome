@@ -97,15 +97,6 @@ export default function DashboardScreen({
         navigation.navigate('Jobs');
       },
     },
-    {
-      key: 'painting',
-      screenId: 'carpentry_painting',
-      icon: 'format-paint',
-      title: tUi('dashPainting', locale),
-      hintKey: 'dashTileHint_painting',
-      badgeKey: 'painting',
-      onPress: () => navigation.navigate('Painting'),
-    },
   ];
 
   const tiles = grant

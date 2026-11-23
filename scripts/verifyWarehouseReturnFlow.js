@@ -113,6 +113,14 @@ assert(
   'tracking list must collapse duplicate factory rows per product',
 );
 assert(
+  read('src/utils/productionTrackingListUi.js').includes("dept === 'painting' && asm"),
+  'painting tracking must not collapse unrelated jobs sharing assembly_id',
+);
+assert(
+  read('server/lib/productionJobsTracking.js').includes('isCancelledFactoryJob'),
+  'tracking API must omit cancelled factory jobs',
+);
+assert(
   read('server/lib/productionJobsTracking.js').includes('collapseProductionTrackingDisplayRows'),
   'tracking API must collapse rows before returning',
 );

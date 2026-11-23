@@ -12,6 +12,14 @@ import { printGroupsFromQuoteLines } from '../lib/warehouseOrderPrintGroups.js';
 import { DeliveryDestinationBadges } from '../shared/quoteProductionOrderUi';
 import { repairInboxCustomerLabel } from '../shared/lib/productionInboxKinds';
 
+function departmentBadgeKey(row) {
+  const d = String(row?.department || '').toLowerCase();
+  if (d.includes('paint')) return 'badgePainting';
+  if (d.includes('uphol')) return 'badgeUpholstery';
+  if (d.includes('carp')) return 'badgeCarpentry';
+  return '';
+}
+
 async function openStagedOrderDelivery(navigation, row) {
   const session = await warehouseMobileRequest('delivery-session-open', {});
   const qty = Math.max(1, Number(row.quantity) || 1);
@@ -28,6 +36,7 @@ async function openStagedOrderDelivery(navigation, row) {
     finished_driver_checked_at: now,
   }];
   const printNoteNumber = String(row.quote_number || row.production_job_id || '').trim();
+  const documentKind = row.showroom_order ? 'showroom_delivery' : 'order_delivery';
   const printGroups = printGroupsFromQuoteLines(quoteLines.length
     ? quoteLines
     : (String(row.assembly_name || '').trim() && String(row.assembly_name) !== String(row.assembly_id)
@@ -40,7 +49,7 @@ async function openStagedOrderDelivery(navigation, row) {
     groups,
     printGroups,
     queueKind: 'order',
-    documentKind: 'order_delivery',
+    documentKind,
     customerName: row.customer_name || '',
     customerPhone: row.customer_phone || '',
   });
@@ -85,6 +94,7 @@ export default function DeliveryUnifiedQueueScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState('');
   const [error, setError] = useState('');
+  const [deptFilter, setDeptFilter] = useState('all');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -120,7 +130,11 @@ export default function DeliveryUnifiedQueueScreen({ navigation }) {
     }
   };
 
-  const listData = useMemo(() => rows, [rows]);
+  const listData = useMemo(() => {
+    if (deptFilter === 'all') return rows;
+    if (deptFilter === 'repair') return rows.filter((r) => r._kind === 'repair');
+    return rows.filter((r) => String(r.department || '').toLowerCase().includes(deptFilter));
+  }, [rows, deptFilter]);
 
   return (
     <View style={[kiosk.screen, kioskScreenEdgesSafe(insets, 8), styles.root]}>
@@ -133,6 +147,25 @@ export default function DeliveryUnifiedQueueScreen({ navigation }) {
         <Text style={kiosk.backText}>{tUi('back', locale)}</Text>
       </Pressable>
       {error ? <Text style={[kiosk.noticeErr, { textAlign }]}>{error}</Text> : null}
+      <View style={styles.filterRow}>
+        {['all', 'carpentry', 'upholstery', 'painting', 'repair'].map((key) => {
+          const label = key === 'all'
+            ? tUi('filterAll', locale)
+            : key === 'repair'
+              ? tUi('badgeRepair', locale)
+              : tUi(key === 'carpentry' ? 'badgeCarpentry' : key === 'upholstery' ? 'badgeUpholstery' : 'badgePainting', locale);
+          const active = deptFilter === key;
+          return (
+            <Pressable
+              key={key}
+              onPress={() => setDeptFilter(key)}
+              style={[styles.filterChip, active ? styles.filterChipOn : null]}
+            >
+              <Text style={[styles.filterChipText, active ? styles.filterChipTextOn : null]}>{label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
       {loading ? (
         <ActivityIndicator style={{ marginTop: 24 }} />
       ) : (
@@ -153,9 +186,21 @@ export default function DeliveryUnifiedQueueScreen({ navigation }) {
             return (
               <View style={kiosk.card}>
                 <DeliveryDestinationBadges row={item} textAlign={textAlign} tUi={tUi} locale={locale} />
-                <Text style={[styles.kindChip, { textAlign }]}>
-                  {isRepair ? tUi('badgeRepair', locale) : tUi('badgeCustomerOrder', locale)}
-                </Text>
+                <View style={styles.deptBadgeWrap}>
+                  {isRepair ? (
+                    <Text style={[styles.kindChip, styles.kindChipCenter]}>{tUi('badgeRepair', locale)}</Text>
+                  ) : null}
+                  {departmentBadgeKey(item) ? (
+                    <Text style={[styles.kindChip, styles.kindChipCenter, styles.deptChip]}>
+                      {tUi(departmentBadgeKey(item), locale)}
+                    </Text>
+                  ) : null}
+                  {!isRepair && !departmentBadgeKey(item) ? (
+                    <Text style={[styles.kindChip, styles.kindChipCenter]}>
+                      {tUi('badgeCustomerOrder', locale)}
+                    </Text>
+                  ) : null}
+                </View>
                 <Text style={[styles.awaitingChip, { textAlign }]}>{tUi('deliveryStatus_completedAwaiting', locale)}</Text>
                 {isRepair ? (
                   <Text style={kiosk.heroNumber}>{textForDisplay(item.return_number || '—', '—')}</Text>
@@ -198,14 +243,29 @@ export default function DeliveryUnifiedQueueScreen({ navigation }) {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   list: { padding: 12, paddingBottom: 32, gap: 12 },
+  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 12, marginBottom: 4 },
+  filterChip: {
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#fff',
+  },
+  filterChipOn: { backgroundColor: '#1e3a5f', borderColor: '#1e3a5f' },
+  filterChipText: { fontSize: 12, fontWeight: '700', color: '#334155' },
+  filterChipTextOn: { color: '#fff' },
+  deptBadgeWrap: { alignItems: 'center', marginBottom: 6, gap: 4 },
   kindChip: {
     fontSize: 13,
     fontWeight: '700',
     color: '#475569',
-    marginBottom: 6,
+    marginBottom: 2,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
   },
+  kindChipCenter: { textAlign: 'center', alignSelf: 'center' },
+  deptChip: { color: '#1e3a5f' },
   awaitingChip: {
     fontSize: 13,
     fontWeight: '700',

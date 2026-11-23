@@ -144,7 +144,13 @@ export function resolveDeliverySessionOrderBadges(session, entries = [], quoteRo
     || quoteRoutingMeta?.customer_name
     || '',
   ).trim();
-  return { showroomOrder, customerOrder, quoteNumber, customerName };
+  const repairOrder = meta.is_return_shipment === true
+    || kind === 'repair_delivery'
+    || Boolean(String(meta.return_order_id || '').trim());
+  const farmOrder = meta.delivery_flow === 'farm_return'
+    || kind === 'farm_return'
+    || kind === 'farm_delivery';
+  return { showroomOrder, customerOrder, quoteNumber, customerName, repairOrder, farmOrder };
 }
 
 /** Kitwe POS / kitwe-products mirror must not include these received lines. */

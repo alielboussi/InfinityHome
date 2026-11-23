@@ -1,6 +1,7 @@
 /** Guards before Hassan Send Order (web board + factory PDF). */
 
 import { readQuoteItemFloor2AssemblyId } from './quoteShowroomOrder.js';
+import { assertZambiaNationalPhone } from './zambiaPhoneDigits.js';
 
 export function factoryOrderNamedLines(items = []) {
   return (items || []).filter((line) => {
@@ -30,4 +31,41 @@ export function assertQuoteReadyForSendOrder(items = []) {
     err.code = 'send_order_qty';
     throw err;
   }
+}
+
+export function assertCustomerOrderCatalogLines(items = []) {
+  const named = factoryOrderNamedLines(items);
+  for (const line of named) {
+    if (quoteLineHasFloor2Link(line) || line.floor2_wip_line) {
+      const err = new Error('Customer orders can only use products from Quotationer → Products.');
+      err.code = 'customer_order_catalog_only';
+      throw err;
+    }
+    if (!String(line.quote_product_id || '').trim()) {
+      const err = new Error('Customer orders can only use products from Quotationer → Products.');
+      err.code = 'customer_order_catalog_only';
+      throw err;
+    }
+  }
+}
+
+export function assertShowroomOrderFloor2Lines(items = []) {
+  const named = factoryOrderNamedLines(items);
+  for (const line of named) {
+    if (!quoteLineHasFloor2Link(line)) {
+      const err = new Error('Showroom orders can only use products from Floor 2.');
+      err.code = 'showroom_order_floor2_only';
+      throw err;
+    }
+  }
+}
+
+export function assertCustomerOrderZambiaPhone(phone, prefix = '+260') {
+  const raw = String(phone || '').trim();
+  if (!raw) {
+    const err = new Error('A Zambian phone number has 9 digits excluding the country code.');
+    err.code = 'zambia_phone_digits';
+    throw err;
+  }
+  assertZambiaNationalPhone(raw, prefix);
 }

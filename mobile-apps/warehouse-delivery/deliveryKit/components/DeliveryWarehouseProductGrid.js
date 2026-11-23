@@ -10,9 +10,11 @@ export function deliveryWarehouseGridKey(item) {
 export function DeliveryWarehouseGridCard({
   item,
   selected = false,
+  disabled = false,
   onSelect,
   getImageUrl,
   getQtyLabel,
+  getSku,
 }) {
   const id = deliveryWarehouseGridKey(item);
   const name = String(item?.name || item?.assembly_name || id);
@@ -20,14 +22,22 @@ export function DeliveryWarehouseGridCard({
   const qtyText = typeof getQtyLabel === 'function'
     ? getQtyLabel(item)
     : '';
+  const sku = typeof getSku === 'function'
+    ? String(getSku(item) || '').trim()
+    : String(item?.family_sku || item?.sku || '').trim();
 
   return (
     <Pressable
-      onPress={() => typeof onSelect === 'function' && onSelect(item)}
+      onPress={() => {
+        if (disabled) return;
+        if (typeof onSelect === 'function') onSelect(item);
+      }}
+      disabled={disabled}
       style={({ pressed }) => [
         styles.card,
         selected && styles.cardSelected,
-        pressed && styles.cardPressed,
+        disabled && styles.cardDisabled,
+        pressed && !disabled && styles.cardPressed,
       ]}
     >
       <View style={styles.photoWrap}>
@@ -45,6 +55,7 @@ export function DeliveryWarehouseGridCard({
         ) : null}
       </View>
       <Text style={styles.name} numberOfLines={2}>{name}</Text>
+      {sku ? <Text style={styles.sku} numberOfLines={1}>{sku}</Text> : null}
     </Pressable>
   );
 }
@@ -59,6 +70,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   cardSelected: { borderColor: theme.primary, borderWidth: 2 },
+  cardDisabled: { opacity: 0.45 },
   cardPressed: { opacity: 0.92 },
   photoWrap: {
     width: '100%',
@@ -92,6 +104,14 @@ const styles = StyleSheet.create({
     color: theme.text,
     lineHeight: 18,
   },
+  sku: {
+    paddingHorizontal: 10,
+    paddingBottom: 10,
+    marginTop: -6,
+    fontSize: 12,
+    fontWeight: '600',
+    color: theme.textMuted,
+  },
   row: { gap: 8, marginBottom: 8, alignItems: 'flex-start' },
 });
 
@@ -101,23 +121,29 @@ export default function DeliveryWarehouseProductGrid({
   onSelect,
   getImageUrl,
   getQtyLabel,
+  getSku,
+  isItemDisabled,
   ListHeaderComponent,
   ListFooterComponent,
   contentContainerStyle,
+  extraData,
 }) {
   const renderItem = useCallback(({ item }) => {
     const key = deliveryWarehouseGridKey(item);
     const selected = selectedId && key === String(selectedId);
+    const disabled = typeof isItemDisabled === 'function' ? Boolean(isItemDisabled(item)) : false;
     return (
       <DeliveryWarehouseGridCard
         item={item}
         selected={selected}
+        disabled={disabled}
         onSelect={onSelect}
         getImageUrl={getImageUrl}
         getQtyLabel={getQtyLabel}
+        getSku={getSku}
       />
     );
-  }, [getImageUrl, getQtyLabel, onSelect, selectedId]);
+  }, [getImageUrl, getQtyLabel, getSku, isItemDisabled, onSelect, selectedId]);
 
   return (
     <FlatList
@@ -130,7 +156,7 @@ export default function DeliveryWarehouseProductGrid({
       ListHeaderComponent={ListHeaderComponent}
       ListFooterComponent={ListFooterComponent}
       contentContainerStyle={contentContainerStyle}
-      extraData={selectedId}
+      extraData={{ selectedId, extraData }}
     />
   );
 }

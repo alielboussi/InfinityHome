@@ -22,6 +22,7 @@ import {
   deliveryEntryPendingAcceptCount,
   deliverySessionNeedsCatalogFinalize,
   deliverySessionNeedsTickRowFinalize,
+  deliverySessionSkipAutoFinalize,
   warehousePacketDisplayLabel,
   warehouseDeliveryReceiverLineKind,
   deliverySessionQuoteId,
@@ -153,7 +154,6 @@ export default function WarehouseDeliveries({ adminMode = false } = {}) {
         const { data: factoryRows, error: sessErr } = await db
           .from('warehouse_delivery_sessions')
           .select(sessionSelect)
-          .eq('from_location', WAREHOUSE_FROM_LOCATION_ID)
           .eq('to_location', WAREHOUSE_TO_LOCATION_ID)
           .order('delivery_number', { ascending: false });
         if (sessErr) throw sessErr;
@@ -184,7 +184,6 @@ export default function WarehouseDeliveries({ adminMode = false } = {}) {
             db
               .from('warehouse_delivery_sessions')
               .select(sessionSelect)
-              .eq('from_location', WAREHOUSE_FROM_LOCATION_ID)
               .eq('to_location', WAREHOUSE_TO_LOCATION_ID),
           ).order('delivery_number', { ascending: false }),
           statusIn(
@@ -327,6 +326,7 @@ export default function WarehouseDeliveries({ adminMode = false } = {}) {
         let healedAny = false;
         for (const session of sessionsList) {
           const entries = grouped[String(session.id)] || [];
+          if (deliverySessionSkipAutoFinalize(session)) continue;
           const needsFinalize = deliverySessionNeedsCatalogFinalize(entries, session.status)
             || deliverySessionNeedsTickRowFinalize(entries, session.status);
           if (!needsFinalize) continue;
@@ -782,6 +782,8 @@ export default function WarehouseDeliveries({ adminMode = false } = {}) {
               customerOrder,
               quoteNumber: orderQuote,
               customerName: orderCustomerName,
+              repairOrder,
+              farmOrder,
             } = resolveDeliverySessionOrderBadges(session, entries, quoteRoutingMeta);
             const cardTitle = (customerOrder || showroomOrder) && orderQuote
               ? orderQuote
@@ -809,7 +811,7 @@ export default function WarehouseDeliveries({ adminMode = false } = {}) {
                 <div
                   className={[
                     'warehouse-delivery-card__banner',
-                    !showroomOrder && !showCustomerBadge ? 'warehouse-delivery-card__banner--spacer' : '',
+                    !showroomOrder && !showCustomerBadge && !repairOrder && !farmOrder ? 'warehouse-delivery-card__banner--spacer' : '',
                   ].filter(Boolean).join(' ')}
                 >
                   {showroomOrder ? (
@@ -820,6 +822,16 @@ export default function WarehouseDeliveries({ adminMode = false } = {}) {
                   {showCustomerBadge ? (
                     <span className="warehouse-delivery-card__type-badge warehouse-delivery-card__type-badge--customer">
                       Customer
+                    </span>
+                  ) : null}
+                  {repairOrder ? (
+                    <span className="warehouse-delivery-card__type-badge warehouse-delivery-card__type-badge--repair">
+                      Repair
+                    </span>
+                  ) : null}
+                  {farmOrder ? (
+                    <span className="warehouse-delivery-card__type-badge warehouse-delivery-card__type-badge--farm">
+                      Farm
                     </span>
                   ) : null}
                 </div>

@@ -24,6 +24,10 @@ import {
   normalizeAssemblyPacketRows,
 } from './utils/warehouseAssemblyPacketPool';
 import { isWarehouseProductAssembly } from './utils/warehouseCatalogHierarchy';
+import {
+  listAccessorySubcategories,
+  readProductAccessorySubcategoryIds,
+} from './utils/warehouseAccessoryCatalog';
 import { normalizeWarehouseProductSku } from './utils/warehouseScanResolver';
 import { LABEL_NAME_MEMORY_KIND } from './utils/warehouseLabelOcrName';
 import {
@@ -64,6 +68,7 @@ const emptyProductForm = {
   set_location_id: WAREHOUSE_FACTORY_LOCATION_ID,
   set_components: [],
   units_per_carton: '1',
+  accessory_subcategory_ids: [],
 };
 
 export default function WarehouseProductEditPage() {
@@ -211,6 +216,7 @@ export default function WarehouseProductEditPage() {
             units_per_carton: row.units_per_carton == null || row.units_per_carton === ''
               ? '1'
               : String(row.units_per_carton),
+            accessory_subcategory_ids: readProductAccessorySubcategoryIds(row),
           });
           setFormReady(true);
         }
@@ -553,6 +559,7 @@ export default function WarehouseProductEditPage() {
         turkish_name: turkishName || null,
         units_per_carton: finishedOnly ? productForm.units_per_carton : '1',
         family_sku: normalizedSku,
+        accessory_subcategory_ids: productForm.accessory_subcategory_ids || [],
         set_location_id: savingSet ? warehouseSetRecipeLocationId : undefined,
         set_components: savingSet
           ? (productForm.set_components || []).filter((line) => String(line?.component_assembly_id || '').trim())
@@ -922,6 +929,38 @@ export default function WarehouseProductEditPage() {
               </button>
             </div>
           </div>
+          {!isSetForm ? (
+            <div className="warehouse-field warehouse-field--span-full">
+              <label>Accessory subcategories for this product</label>
+              <p className="warehouse-field-hint">
+                These fields appear next to L/W/H when this product is added on an upholstery customer order.
+              </p>
+              <div className="locations-checkbox-group">
+                {listAccessorySubcategories(assemblies).map((sub) => {
+                  const checked = (productForm.accessory_subcategory_ids || []).includes(sub.id);
+                  return (
+                    <label key={sub.id}>
+                      <input
+                        type="checkbox"
+                        className="locations-checkbox-input"
+                        checked={checked}
+                        onChange={(e) => {
+                          setProductForm((f) => {
+                            const cur = f.accessory_subcategory_ids || [];
+                            const next = e.target.checked
+                              ? [...new Set([...cur, sub.id])]
+                              : cur.filter((id) => id !== sub.id);
+                            return { ...f, accessory_subcategory_ids: next };
+                          });
+                        }}
+                      />
+                      <span>{sub.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
           {isSetForm ? (
             <p className="warehouse-field-hint warehouse-field--span-full" style={{ marginTop: 0 }}>
               A set is built from other warehouse products (each with its own packet BOM). Stock is how many complete sets you can assemble from component on-hand — e.g. 1× table + 6× chairs.

@@ -202,9 +202,14 @@ export async function handoffQuoteLinePartialToFloor1(sb, {
   const assemblyId = run?.assembly_id || meta.primary_assembly_id || null;
   if (!assemblyId) throw new Error('No assembly linked for Floor 1 stock');
 
-  const { creditQuoteAssemblyUnitsToFloor1 } = await import('./quoteProductionRouting.js');
-  await creditQuoteAssemblyUnitsToFloor1(sb, { assemblyId, qty: sliceQty });
-
+  const { buildPendingFloor1Credit } = await import('./floor1CreditApproval.js');
+  nextMeta.pending_floor1_credit = buildPendingFloor1Credit({
+    assemblyId,
+    qty: sliceQty,
+    requestedBy: userId,
+    source: 'quote_partial',
+  });
+  nextMeta.floor1_awaiting_hassan = true;
   const receipts = Array.isArray(nextMeta.partial_floor1_receipts) ? [...nextMeta.partial_floor1_receipts] : [];
   receipts.push({
     id: newUuid(),
@@ -214,6 +219,7 @@ export async function handoffQuoteLinePartialToFloor1(sb, {
     assembly_id: String(assemblyId),
     registered_at: now,
     by: userId || null,
+    pending_approval: true,
     department: String(route || routing.route || 'upholstery').toLowerCase(),
   });
   nextMeta.partial_floor1_receipts = receipts;
@@ -224,7 +230,7 @@ export async function handoffQuoteLinePartialToFloor1(sb, {
   }).eq('quote_id', qid);
   if (error) throw new Error(error.message || 'Failed to save Floor 1 handoff');
 
-  return { metadata: nextMeta, floor1_credited: true, quantity: sliceQty, order_completed: false };
+  return { metadata: nextMeta, floor1_credited: false, floor1_pending_approval: true, quantity: sliceQty, order_completed: false };
 }
 
 /** User chose delivery for a slice already recorded in line_progress. */

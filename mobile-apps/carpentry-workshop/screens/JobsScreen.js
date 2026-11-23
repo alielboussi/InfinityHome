@@ -28,6 +28,12 @@ import {
   fetchProductionStoreroomMaterials,
   pauseCarpentryProductionJob,
   resumeCarpentryProductionJob,
+  acceptCarpentryQuote,
+  pauseCarpentryQuote,
+  resumeCarpentryQuote,
+  completeCarpentryQuote,
+  markCarpentryQuoteLineReady,
+  handoffCarpentryQuoteLine,
 } from '../services/carpentryApi';
 import StoreroomDeductionPromptModal from '../productionKiosk/shared/components/StoreroomDeductionPromptModal';
 import ConfirmTypeOkModal from '../productionKiosk/shared/components/ConfirmTypeOkModal';
@@ -37,7 +43,8 @@ import {
   storeroomDeductionStrings,
 } from '../productionKiosk/shared/lib/storeroomDeductionFlow';
 import ProductionJobMaterialsModal from '../productionKiosk/components/ProductionJobMaterialsModal';
-import { QuoteProductionCardExtras } from '../shared/quoteProductionOrderUi';
+import { QuoteProductionOrderBadges } from '../shared/quoteProductionOrderUi';
+import { QuoteProductionDispositionModal, QuoteProductionWorkshopLineRows } from '../productionKiosk/shared/quoteProductionPartialUi';
 import { theme } from '../shared/theme';
 import RunningJobElapsed from '../productionKiosk/components/RunningJobElapsed';
 import JobMaterialsInlineList from '../shared/components/JobMaterialsInlineList';
@@ -58,7 +65,6 @@ import {
 } from '../shared/lib/repairReturnQueueUi';
 import WorkshopRepairInboxCard from '../shared/components/WorkshopRepairInboxCard';
 import { WorkshopJobInboxBadges } from '../shared/components/WorkshopInboxKindBadges';
-import { QuoteProductionOrderBadges } from '../shared/quoteProductionOrderUi';
 import { repairSearchBlob } from '../shared/lib/productionInboxKinds';
 import RunningRepairElapsed from '../productionKiosk/components/RunningRepairElapsed';
 
@@ -110,50 +116,107 @@ function matchesJobsSearch(item, rawQuery) {
   return false;
 }
 
-function QuoteOrderJobCard({ quote, locale, textAlign, onPress, onMaterials }) {
+function QuoteOrderJobCard({
+  quote, locale, textAlign, busy, onMaterials, onPlay, onPause, onStop, onQuoteLinesChanged,
+}) {
   const canMaterials = Boolean(quote?.sent_to_production_at || quote?.sent_to_production) && !quote?.completed_at;
+  const accepted = Boolean(quote?.accepted_at);
+  const paused = String(quote?.timer_status || '').toLowerCase() === 'paused' || Boolean(quote?.run_paused_at);
+  const canPlay = !accepted || paused;
+  const canPause = accepted && !paused;
+  const showroom = String(quote?.showroom_order) === 'true' || quote?.showroom_order === true;
+  const orderOpen = accepted && !quote?.completed_at;
   return (
     <View style={[kiosk.card, styles.jobCard]}>
-      <Pressable
-        style={({ pressed }) => [pressed && { opacity: 0.92 }]}
-        onPress={onPress}
-      >
-        <QuoteProductionOrderBadges quote={quote} textAlign={textAlign} tUi={tUi} locale={locale} />
-        <Text style={[styles.quoteBadge, { textAlign }]}>
+        <Text style={styles.quoteBadgeRight}>
           {quote.quote_number || quote.quote_id}
         </Text>
-        <Text style={[styles.jobTitle, { textAlign }]}>
-          {textForDisplay(quote.customer_name || tUi('showroomOrderDetailLabel', locale), '—')}
+        <QuoteProductionOrderBadges quote={quote} textAlign={textAlign} tUi={tUi} locale={locale} align="center" />
+        <Text style={styles.jobTitleCenter}>
+          {showroom
+            ? tUi('showroomOrderDetailLabel', locale)
+            : (quote.customer_name || '—')}
         </Text>
-        {quote.customer_phone ? (
-          <Text style={[styles.jobMeta, { textAlign }]}>{quote.customer_phone}</Text>
-        ) : null}
-        <View style={styles.timerRow}>
+        <Text style={styles.jobMetaCenter}>
+          {showroom ? '—' : (quote.customer_phone || '—')}
+        </Text>
+        <View style={styles.timerRowCenter}>
           <Text style={styles.timerLabel}>{tUi('quoteOrderTimer', locale)}</Text>
           <QuoteOrderElapsed quote={quote} style={styles.timerValue} />
           <Text style={styles.statusChip}>
             {quote.accepted_at ? tUi('carpentryQuoteInProduction', locale) : tUi('carpentryQuoteAwaiting', locale)}
           </Text>
         </View>
-        <QuoteProductionCardExtras
-          quote={quote}
+        <QuoteProductionWorkshopLineRows
+          lines={quote.lines}
           route="carpentry"
           textAlign={textAlign}
           tUi={tUi}
           locale={locale}
+          orderOpen={orderOpen}
+          allowPaintingHandoff
+          allowFloor1Handoff
+          allowDeliveryHandoff={false}
+          onMarkReady={(line, qty) => markCarpentryQuoteLineReady(
+            quote.quote_id,
+            line.id,
+            qty,
+            { productionLineSet: quote.production_line_set },
+          )}
+          onHandoff={async (line, target, qty) => {
+            await handoffCarpentryQuoteLine(quote.quote_id, line.id, target, qty);
+            onQuoteLinesChanged?.();
+          }}
         />
-      </Pressable>
-      {canMaterials ? (
-        <View style={styles.iconRow}>
+      {quote?.completed_at ? (
+        <Text style={[kiosk.metaLine, { textAlign: 'center' }]}>
+          {tUi('quoteOrderLockedViewOnly', locale)}
+        </Text>
+      ) : (
+      <View style={styles.iconRow}>
+        {canPlay ? (
+          <Pressable
+            style={styles.iconBtn}
+            disabled={busy}
+            onPress={() => onPlay?.(quote)}
+            accessibilityLabel={tUi('quoteOrderAcceptStart', locale)}
+          >
+            <MaterialCommunityIcons name="play-circle" size={52} color="#22c55e" />
+            <Text style={styles.iconCaption}>{tUi('quoteOrderAcceptStart', locale)}</Text>
+          </Pressable>
+        ) : null}
+        {canPause ? (
+          <Pressable
+            style={styles.iconBtn}
+            disabled={busy}
+            onPress={() => onPause?.(quote)}
+            accessibilityLabel={tUi('quoteOrderPause', locale)}
+          >
+            <MaterialCommunityIcons name="pause-circle" size={52} color="#f59e0b" />
+            <Text style={styles.iconCaption}>{tUi('quoteOrderPause', locale)}</Text>
+          </Pressable>
+        ) : null}
+        {canMaterials ? (
           <Pressable
             style={styles.iconBtn}
             onPress={() => onMaterials?.(quote)}
             accessibilityLabel={tUi('quoteOrderMaterials', locale)}
           >
-            <MaterialCommunityIcons name="wrench" size={48} color={KIOSK_ICON_BLUE_ON_DARK} />
+            <MaterialCommunityIcons name="wrench" size={48} color="#38bdf8" />
+            <Text style={styles.iconCaption}>{tUi('quoteOrderMaterials', locale)}</Text>
           </Pressable>
-        </View>
-      ) : null}
+        ) : null}
+        <Pressable
+          style={styles.iconBtn}
+          disabled={busy || !accepted}
+          onPress={() => onStop?.(quote)}
+          accessibilityLabel={tUi('quoteOrderEnd', locale)}
+        >
+          <MaterialCommunityIcons name="stop-circle" size={52} color={theme.danger} />
+          <Text style={styles.iconCaption}>{tUi('quoteOrderEnd', locale)}</Text>
+        </Pressable>
+      </View>
+      )}
     </View>
   );
 }
@@ -181,14 +244,18 @@ function JobCard({
       textAlign={textAlign}
       style={[kiosk.card, styles.jobCard]}
     >
-      {showJobPhoto ? (
-        <Image source={{ uri: thumb }} style={styles.jobThumb} resizeMode="contain" />
-      ) : null}
       <WorkshopJobInboxBadges job={job} locale={locale} textAlign={textAlign} tUi={tUi} />
-      <Text style={[styles.jobTitle, { textAlign }]}>{textForDisplay(job.product_name || job.raw_name, '—')}</Text>
-      <Text style={[styles.jobMeta, { textAlign }]}>
-        {textForDisplay(job.product_sku || job.raw_name || '', '')}
-      </Text>
+      <View style={styles.productRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.jobTitle, { textAlign }]}>{textForDisplay(job.product_name || job.raw_name, '—')}</Text>
+          <Text style={[styles.jobMeta, { textAlign }]}>
+            {textForDisplay(job.product_sku || job.raw_name || '', '')}
+          </Text>
+        </View>
+        {showJobPhoto ? (
+          <Image source={{ uri: thumb }} style={styles.thumbInline} resizeMode="cover" />
+        ) : null}
+      </View>
       {job.dimensions_display ? (
         <Text style={[styles.jobDims, { textAlign }]}>{job.dimensions_display}</Text>
       ) : null}
@@ -213,7 +280,7 @@ function JobCard({
             style={styles.iconBtn}
             accessibilityLabel={tUi('upholsteryJobResume', locale)}
           >
-            <MaterialCommunityIcons name="play-circle" size={52} color={KIOSK_ICON_BLUE_ON_DARK} />
+            <MaterialCommunityIcons name="play-circle" size={52} color="#22c55e" />
           </ProductionPressableHint>
         ) : null}
         {isRunning ? (
@@ -226,7 +293,7 @@ function JobCard({
             style={styles.iconBtn}
             accessibilityLabel={tUi('upholsteryJobPause', locale)}
           >
-            <MaterialCommunityIcons name="pause-circle" size={52} color={KIOSK_ICON_BLUE_ON_DARK} />
+            <MaterialCommunityIcons name="pause-circle" size={52} color="#f59e0b" />
           </ProductionPressableHint>
         ) : null}
         {!isCompleted ? (
@@ -239,7 +306,7 @@ function JobCard({
             style={styles.iconBtn}
             accessibilityLabel={tUi('quoteOrderMaterials', locale)}
           >
-            <MaterialCommunityIcons name="wrench" size={48} color={KIOSK_ICON_BLUE_ON_DARK} />
+            <MaterialCommunityIcons name="wrench" size={48} color="#38bdf8" />
           </ProductionPressableHint>
         ) : null}
         <ProductionPressableHint
@@ -290,6 +357,8 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
   const [storeroomFinishJobId, setStoreroomFinishJobId] = useState('');
   const [storeroomPromptVisible, setStoreroomPromptVisible] = useState(false);
   const [finishConfirmJob, setFinishConfirmJob] = useState(null);
+  const [quoteStopTarget, setQuoteStopTarget] = useState(null);
+  const [quoteTimerBusyId, setQuoteTimerBusyId] = useState('');
 
   const storeroomCopy = useMemo(() => storeroomDeductionStrings(tUi, locale), [locale]);
 
@@ -327,7 +396,7 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
         if (id) mergedQuotesById.set(id, q);
       }
       setJobs(Array.isArray(list) ? list : []);
-      setQuoteOrders([...mergedQuotesById.values()].filter((q) => !q.completed_at));
+      setQuoteOrders([...mergedQuotesById.values()]);
       const repairRows = repairPayload?.return_orders || [];
       setRepairs(Array.isArray(repairRows)
         ? repairRows.filter((r) => r.status !== 'completed' && r.status !== 'cancelled')
@@ -403,6 +472,68 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
 
   const onPlay = (jobId) => {
     void runOptimisticTimerOp(jobId, 'resume');
+  };
+
+  const patchQuoteOrder = (quoteId, patch) => {
+    setQuoteOrders((prev) => prev.map((q) => (
+      String(q.quote_id) === String(quoteId) ? { ...q, ...patch } : q
+    )));
+  };
+
+  const runQuoteTimer = async (quote, mode) => {
+    const id = String(quote?.quote_id || '').trim();
+    if (!id || quoteTimerBusyId) return;
+    setQuoteTimerBusyId(id);
+    const snapshot = quote;
+    try {
+      if (mode === 'play') {
+        if (!quote.accepted_at) {
+          await acceptCarpentryQuote(id, { productionLineSet: quote.production_line_set });
+        } else {
+          await resumeCarpentryQuote(id, { productionLineSet: quote.production_line_set });
+        }
+        patchQuoteOrder(id, {
+          accepted_at: quote.accepted_at || new Date().toISOString(),
+          timer_status: 'running',
+          run_paused_at: null,
+          run_started_at: new Date().toISOString(),
+        });
+      } else if (mode === 'pause') {
+        const acc = Math.max(0, Number(quote.accumulated_ms) || 0);
+        patchQuoteOrder(id, {
+          timer_status: 'paused',
+          run_paused_at: new Date().toISOString(),
+          accumulated_ms: acc,
+        });
+        await pauseCarpentryQuote(id, { productionLineSet: quote.production_line_set });
+      }
+      void loadJobs({ showLoading: false });
+    } catch (e) {
+      patchQuoteOrder(id, snapshot);
+      Alert.alert(tUi('quoteOrderFailed', locale), e?.message || '');
+    } finally {
+      setQuoteTimerBusyId('');
+    }
+  };
+
+  const finishQuoteFromCard = async (quote, { sendToPainting = false, destination = 'floor1' } = {}) => {
+    const id = String(quote?.quote_id || '').trim();
+    if (!id) return;
+    setQuoteTimerBusyId(id);
+    try {
+      await completeCarpentryQuote(id, {
+        deferDeliveryQueue: Boolean(sendToPainting),
+        destination: sendToPainting ? 'delivery' : destination,
+        sendToPainting: Boolean(sendToPainting),
+        productionLineSet: quote.production_line_set,
+      });
+      setQuoteOrders((prev) => prev.filter((q) => String(q.quote_id) !== id));
+    } catch (e) {
+      Alert.alert(tUi('quoteOrderFailed', locale), e?.message || '');
+      void loadJobs({ showLoading: false });
+    } finally {
+      setQuoteTimerBusyId('');
+    }
   };
 
   const onPause = (jobId) => {
@@ -549,7 +680,6 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
       <Pressable style={kiosk.backBtn} onPress={() => navigation.goBack()}>
         <Text style={kiosk.backText}>{tUi('back', locale)}</Text>
       </Pressable>
-      <Text style={[kiosk.hint, styles.intro, { textAlign }]}>{tUi('upholsteryJobIntro', locale)}</Text>
       <TextInput
         style={[kiosk.input, styles.searchInput, { textAlign: locale === 'ar' ? 'right' : 'left' }]}
         placeholder={tUi('jobsSearchPlaceholder', locale)}
@@ -601,12 +731,17 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
               quote={item.quote}
               locale={locale}
               textAlign={textAlign}
-              onPress={() => navigation.navigate('QuoteDetail', { quote: item.quote })}
+              busy={quoteTimerBusyId === String(item.quote.quote_id)}
+              onQuoteLinesChanged={() => loadJobs({ showLoading: false })}
+              onPlay={(q) => runQuoteTimer(q, 'play')}
+              onPause={(q) => runQuoteTimer(q, 'pause')}
+              onStop={(q) => setQuoteStopTarget(q)}
               onMaterials={(q) => setMaterialsTarget({
                 jobKind: 'quote',
                 jobId: String(q.quote_id || ''),
                 productionRoute: 'carpentry',
                 initialLines: q.manual_material_lines || [],
+                allowFloor2WipDeduction: true,
               })}
             />
           ) : (
@@ -658,6 +793,7 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
         jobKind={materialsTarget?.jobKind || 'carpentry'}
         jobId={materialsTarget?.jobId || ''}
         productionRoute={materialsTarget?.productionRoute || ''}
+        allowFloor2WipDeduction={materialsTarget?.jobKind === 'quote' || materialsTarget?.allowFloor2WipDeduction !== false}
         initialLines={materialsTarget?.initialLines || []}
         onClose={() => setMaterialsTarget(null)}
         onSaved={() => {
@@ -679,6 +815,26 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
           setFinishConfirmJob(null);
           if (job) proceedFinishJob(job);
         }}
+      />
+      <QuoteProductionDispositionModal
+        visible={Boolean(quoteStopTarget)}
+        title={tUi('quoteOrderDispositionTitle', locale)}
+        message={tUi('quoteOrderCarpentryDispositionPrompt', locale)}
+        textAlign={textAlign}
+        tUi={tUi}
+        locale={locale}
+        choices={[
+          { key: 'delivery', label: tUi('quoteLineHandoffDelivery', locale) },
+          { key: 'painting', label: tUi('quoteLineHandoffPainting', locale) },
+        ]}
+        onPick={(key) => {
+          const q = quoteStopTarget;
+          setQuoteStopTarget(null);
+          if (!q) return;
+          if (key === 'painting') void finishQuoteFromCard(q, { sendToPainting: true });
+          else void finishQuoteFromCard(q, { destination: 'delivery' });
+        }}
+        onCancel={() => setQuoteStopTarget(null)}
       />
       <StoreroomDeductionPromptModal
         visible={storeroomPromptVisible}
@@ -708,10 +864,31 @@ const styles = StyleSheet.create({
   listEmpty: { flexGrow: 1, justifyContent: 'center' },
   empty: { marginTop: 24 },
   jobCard: { marginBottom: 12 },
+  productRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  thumbInline: { width: 56, height: 56, borderRadius: 8, backgroundColor: theme.surfaceElevated },
   jobThumb: { width: '100%', height: 120, borderRadius: 10, marginBottom: 8, backgroundColor: theme.surfaceElevated },
   quoteBadge: { fontSize: 14, fontWeight: '700', color: theme.primary, marginBottom: 4 },
+  quoteBadgeRight: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: theme.primary,
+    textAlign: 'right',
+    alignSelf: 'stretch',
+    marginBottom: 6,
+  },
   jobTitle: { fontSize: 18, fontWeight: '700', color: theme.text, marginBottom: 4 },
+  jobTitleCenter: { fontSize: 18, fontWeight: '700', color: theme.text, marginBottom: 4, textAlign: 'center' },
   jobMeta: { fontSize: 13, color: theme.muted, marginBottom: 4 },
+  jobMetaCenter: { fontSize: 13, color: theme.muted, marginBottom: 8, textAlign: 'center' },
+  timerRowCenter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 16,
+    flexWrap: 'wrap',
+  },
+  iconCaption: { color: '#e2e8f0', fontSize: 11, fontWeight: '700', marginTop: 2, textAlign: 'center', maxWidth: 88 },
   jobDims: { fontSize: 12, color: theme.textMuted, marginBottom: 10, fontWeight: '600' },
   timerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' },
   timerLabel: { fontSize: 13, color: theme.muted },

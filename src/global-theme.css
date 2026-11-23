@@ -12805,6 +12805,72 @@ body.enterprise-theme .quotes-create-page .quotes-table--create-lines thead th {
   align-items: stretch;
   column-gap: 8px;
 }
+.quotes-line-upholstery-spec-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+  margin-top: 8px;
+}
+.quotes-line-accessory-subs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  flex: 1 1 280px;
+}
+.quotes-line-accessory-sub {
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.quotes-line-accessory-slot {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+.quotes-line-accessory-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #0f172a;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 22px;
+}
+.quotes-line-accessory-thumb {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #e2e8f0;
+}
+.warehouse-accessory-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.warehouse-accessory-dialog {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  width: min(480px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+}
+.warehouse-accessory-dialog h2 {
+  margin: 0 0 8px;
+}
 .quotes-line-meta-grid--upholstery .quotes-line-meta-field {
   display: flex;
   flex-direction: column;
@@ -18388,6 +18454,16 @@ body.enterprise-theme .warehouse-deliveries-page h2 {
 .warehouse-deliveries-page .warehouse-delivery-card__type-badge--customer {
   background: #dcfce7;
   border: 1px solid #86efac;
+}
+
+.warehouse-deliveries-page .warehouse-delivery-card__type-badge--repair {
+  background: #ffedd5;
+  border: 1px solid #fdba74;
+}
+
+.warehouse-deliveries-page .warehouse-delivery-card__type-badge--farm {
+  background: #d1fae5;
+  border: 1px solid #6ee7b7;
 }
 
 .warehouse-deliveries-page .warehouse-delivery-card--open {
