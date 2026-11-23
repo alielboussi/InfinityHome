@@ -14,12 +14,15 @@ import {
   saveProductionPushPrefs,
 } from '../productionPushPrefs';
 
-function PrefRow({ label, hint, value, onValueChange, disabled, primaryColor }) {
+function PrefRow({
+  label, hint, value, onValueChange, disabled, primaryColor, textAlign,
+}) {
+  const align = textAlign || 'left';
   return (
     <View style={styles.row}>
-      <View style={styles.rowText}>
-        <Text style={styles.rowLabel}>{label}</Text>
-        {hint ? <Text style={styles.rowHint}>{hint}</Text> : null}
+      <View style={[styles.rowText, { alignItems: align === 'right' ? 'flex-end' : 'flex-start' }]}>
+        <Text style={[styles.rowLabel, { textAlign: align }]}>{label}</Text>
+        {hint ? <Text style={[styles.rowHint, { textAlign: align }]}>{hint}</Text> : null}
       </View>
       <Switch
         value={value}
@@ -40,6 +43,9 @@ function PrefRow({ label, hint, value, onValueChange, disabled, primaryColor }) 
  * @param {import('react-native').ViewStyle} [props.screenStyle]
  * @param {number} [props.paddingTop]
  * @param {number} [props.paddingBottom]
+ * @param {import('react').ReactNode} [props.header] — app top bar + locale toggle
+ * @param {object} [props.copy] — localized strings (falls back to English)
+ * @param {'left'|'right'|'center'} [props.textAlign]
  */
 export default function ProductionPushSettingsScreen({
   navigation,
@@ -48,7 +54,29 @@ export default function ProductionPushSettingsScreen({
   screenStyle,
   paddingTop = 8,
   paddingBottom = 24,
+  header = null,
+  copy = {},
+  textAlign = 'left',
 }) {
+  const c = {
+    back: '← Dashboard',
+    lead: 'Choose which production alerts this device should receive. Changes apply after you save.',
+    quoteOrders: 'Quote orders',
+    quoteOrdersHint: 'New Hassan quote orders',
+    repairs: 'Repairs',
+    repairsHint: 'Repair queue updates',
+    jobs: 'Jobs',
+    jobsHint: 'Floor 2 job timers and status',
+    paintingJobs: 'Painting jobs',
+    paintingJobsHint: 'Butterfly / painting work',
+    saved: 'Saved. Push preferences updated on server.',
+    saveFailed: 'Could not save push settings.',
+    notConfigured: 'Push registration is not configured for this app.',
+    save: 'Save',
+    saving: 'Saving…',
+    ...copy,
+  };
+
   const [prefs, setPrefs] = useState({ ...DEFAULT_PRODUCTION_PUSH_PREFS });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -68,7 +96,7 @@ export default function ProductionPushSettingsScreen({
 
   const handleSave = useCallback(async () => {
     if (typeof registerProductionPushTokenWithServer !== 'function') {
-      setStatus('Push registration is not configured for this app.');
+      setStatus(c.notConfigured);
       return;
     }
     setSaving(true);
@@ -77,20 +105,21 @@ export default function ProductionPushSettingsScreen({
       const saved = await saveProductionPushPrefs(prefs);
       setPrefs(saved);
       await registerProductionPushTokenWithServer({ pushPrefs: saved });
-      setStatus('Saved. Push preferences updated on server.');
+      setStatus(c.saved);
     } catch (err) {
-      setStatus(err?.message || 'Could not save push settings.');
+      setStatus(err?.message || c.saveFailed);
     } finally {
       setSaving(false);
     }
-  }, [prefs, registerProductionPushTokenWithServer]);
+  }, [prefs, registerProductionPushTokenWithServer, c.notConfigured, c.saved, c.saveFailed]);
 
   const back = () => navigation?.goBack?.();
 
   return (
     <View style={[styles.screen, screenStyle, { paddingTop, paddingBottom }]}>
+      {header}
       <Pressable style={styles.backLink} onPress={back} accessibilityRole="button">
-        <Text style={[styles.backLinkText, { color: themePrimary }]}>← Dashboard</Text>
+        <Text style={[styles.backLinkText, { color: themePrimary, textAlign }]}>{c.back}</Text>
       </Pressable>
       {loading ? (
         <View style={styles.loading}>
@@ -98,21 +127,19 @@ export default function ProductionPushSettingsScreen({
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          <Text style={styles.lead}>
-            Choose which production alerts this device should receive. Changes apply after you save.
-          </Text>
-          <PrefRow label="Quote orders" hint="New Hassan quote orders" value={prefs.quotes} onValueChange={toggle('quotes')} disabled={saving} primaryColor={themePrimary} />
-          <PrefRow label="Repairs" hint="Repair queue updates" value={prefs.repairs} onValueChange={toggle('repairs')} disabled={saving} primaryColor={themePrimary} />
-          <PrefRow label="Jobs" hint="Floor 2 job timers and status" value={prefs.jobs} onValueChange={toggle('jobs')} disabled={saving} primaryColor={themePrimary} />
-          <PrefRow label="Painting jobs" hint="Butterfly / painting work" value={prefs.painting_jobs} onValueChange={toggle('painting_jobs')} disabled={saving} primaryColor={themePrimary} />
-          {status ? <Text style={styles.status}>{status}</Text> : null}
+          <Text style={[styles.lead, { textAlign }]}>{c.lead}</Text>
+          <PrefRow label={c.quoteOrders} hint={c.quoteOrdersHint} value={prefs.quotes} onValueChange={toggle('quotes')} disabled={saving} primaryColor={themePrimary} textAlign={textAlign} />
+          <PrefRow label={c.repairs} hint={c.repairsHint} value={prefs.repairs} onValueChange={toggle('repairs')} disabled={saving} primaryColor={themePrimary} textAlign={textAlign} />
+          <PrefRow label={c.jobs} hint={c.jobsHint} value={prefs.jobs} onValueChange={toggle('jobs')} disabled={saving} primaryColor={themePrimary} textAlign={textAlign} />
+          <PrefRow label={c.paintingJobs} hint={c.paintingJobsHint} value={prefs.painting_jobs} onValueChange={toggle('painting_jobs')} disabled={saving} primaryColor={themePrimary} textAlign={textAlign} />
+          {status ? <Text style={[styles.status, { textAlign }]}>{status}</Text> : null}
           <Pressable
             style={({ pressed }) => [styles.saveBtn, { backgroundColor: themePrimary }, pressed && styles.saveBtnPressed, saving && styles.saveBtnDisabled]}
             onPress={handleSave}
             disabled={saving}
             accessibilityRole="button"
           >
-            <Text style={styles.saveBtnText}>{saving ? 'Saving…' : 'Save'}</Text>
+            <Text style={styles.saveBtnText}>{saving ? c.saving : c.save}</Text>
           </Pressable>
         </ScrollView>
       )}

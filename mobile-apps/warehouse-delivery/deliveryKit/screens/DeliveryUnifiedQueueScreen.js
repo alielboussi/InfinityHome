@@ -9,15 +9,61 @@ import { tUi, textForDisplay } from '../lib/productionKioskI18n';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 import { printGroupsFromQuoteLines } from '../lib/warehouseOrderPrintGroups.js';
-import { DeliveryDestinationBadges } from '../shared/quoteProductionOrderUi';
 import { repairInboxCustomerLabel } from '../shared/lib/productionInboxKinds';
+import { theme as appTheme } from '../shared/theme';
 
-function departmentBadgeKey(row) {
+const DEPT_THEME = {
+  carpentry: { bg: '#ffedd5', fg: '#9a3412', bar: '#ea580c' },
+  upholstery: { bg: '#ccfbf1', fg: '#0f766e', bar: '#0d9488' },
+  painting: { bg: '#ede9fe', fg: '#6d28d9', bar: '#7c3aed' },
+  repair: { bg: '#ffe4e6', fg: '#9f1239', bar: '#e11d48' },
+  other: { bg: '#e0e7ff', fg: '#3730a3', bar: '#4f46e5' },
+};
+
+const FILTERS = [
+  { key: 'all', labelKey: 'filterAll' },
+  { key: 'carpentry', labelKey: 'filterCarpentry' },
+  { key: 'upholstery', labelKey: 'filterUpholstery' },
+  { key: 'painting', labelKey: 'filterPainting' },
+  { key: 'repair', labelKey: 'filterRepair' },
+];
+
+function departmentKey(row) {
+  if (row?._kind === 'repair') return 'repair';
   const d = String(row?.department || '').toLowerCase();
-  if (d.includes('paint')) return 'badgePainting';
-  if (d.includes('uphol')) return 'badgeUpholstery';
-  if (d.includes('carp')) return 'badgeCarpentry';
-  return '';
+  if (d.includes('paint')) return 'painting';
+  if (d.includes('uphol')) return 'upholstery';
+  if (d.includes('carp')) return 'carpentry';
+  return 'other';
+}
+
+function departmentName(row, locale) {
+  const key = departmentKey(row);
+  if (key === 'repair') return tUi('filterRepair', locale);
+  if (key === 'painting') return tUi('filterPainting', locale);
+  if (key === 'upholstery') return tUi('filterUpholstery', locale);
+  if (key === 'carpentry') return tUi('filterCarpentry', locale);
+  const raw = String(row?.department || '').trim();
+  return raw || tUi('dashUnifiedOrders', locale);
+}
+
+function sourceLabel(row, locale) {
+  if (row?._kind === 'repair') return tUi('sourceRepair', locale);
+  if (row?.showroom_order === true) return tUi('sourceShowroom', locale);
+  return tUi('sourceCustomer', locale);
+}
+
+function customerDisplay(row, locale) {
+  if (row?._kind === 'repair') return repairInboxCustomerLabel(row, tUi, locale) || '—';
+  if (row?.showroom_order === true) return tUi('sourceShowroom', locale);
+  const name = String(row?.customer_name || '').trim();
+  const phone = String(row?.customer_phone || '').trim();
+  if (name && phone) return `${name} · ${phone}`;
+  return name || '—';
+}
+
+function quoteDisplay(row) {
+  return String(row?.quote_number || '').trim() || '—';
 }
 
 async function openStagedOrderDelivery(navigation, row) {
@@ -89,7 +135,19 @@ function openStagedRepairDelivery(navigation, row) {
     documentKind: 'repair_delivery',
     repairCustomerName: customerName,
     repairCustomerPhone: customerPhone,
+    customerName,
+    customerPhone,
   });
+}
+
+function DetailLine({ label, value, textAlign, color }) {
+  const text = String(value || '').trim();
+  if (!text) return null;
+  return (
+    <Text style={[styles.detailLine, { textAlign, color }]}>
+      {label}: {text}
+    </Text>
+  );
 }
 
 export default function DeliveryUnifiedQueueScreen({ navigation }) {
@@ -121,7 +179,7 @@ export default function DeliveryUnifiedQueueScreen({ navigation }) {
 
   const onDeliver = async (item) => {
     setBusyId(item._key);
-  setError('');
+    setError('');
     try {
       if (item._kind === 'repair') {
         openStagedRepairDelivery(navigation, item);
@@ -137,8 +195,8 @@ export default function DeliveryUnifiedQueueScreen({ navigation }) {
 
   const listData = useMemo(() => {
     if (deptFilter === 'all') return rows;
-    if (deptFilter === 'repair') return rows.filter((r) => r._kind === 'repair');
-    return rows.filter((r) => String(r.department || '').toLowerCase().includes(deptFilter));
+    if (deptFilter === 'repair') return rows.filter((r) => departmentKey(r) === 'repair');
+    return rows.filter((r) => departmentKey(r) === deptFilter);
   }, [rows, deptFilter]);
 
   return (
@@ -153,26 +211,32 @@ export default function DeliveryUnifiedQueueScreen({ navigation }) {
       </Pressable>
       {error ? <Text style={[kiosk.noticeErr, { textAlign }]}>{error}</Text> : null}
       <View style={styles.filterRow}>
-        {['all', 'carpentry', 'upholstery', 'painting', 'repair'].map((key) => {
-          const label = key === 'all'
-            ? tUi('filterAll', locale)
-            : key === 'repair'
-              ? tUi('badgeRepair', locale)
-              : tUi(key === 'carpentry' ? 'badgeCarpentry' : key === 'upholstery' ? 'badgeUpholstery' : 'badgePainting', locale);
-          const active = deptFilter === key;
+        {FILTERS.map((f) => {
+          const active = deptFilter === f.key;
+          const theme = f.key === 'all' ? DEPT_THEME.other : DEPT_THEME[f.key];
           return (
             <Pressable
-              key={key}
-              onPress={() => setDeptFilter(key)}
-              style={[styles.filterChip, active ? styles.filterChipOn : null]}
+              key={f.key}
+              onPress={() => setDeptFilter(f.key)}
+              style={[
+                styles.filterChip,
+                { borderColor: theme.bar },
+                active ? { backgroundColor: theme.bar } : { backgroundColor: theme.bg },
+              ]}
             >
-              <Text style={[styles.filterChipText, active ? styles.filterChipTextOn : null]}>{label}</Text>
+              <Text style={[
+                styles.filterChipText,
+                { color: active ? '#fff' : theme.fg },
+              ]}
+              >
+                {tUi(f.labelKey, locale)}
+              </Text>
             </Pressable>
           );
         })}
       </View>
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 24 }} />
+        <ActivityIndicator style={{ marginTop: 24 }} color={appTheme.primary} />
       ) : (
         <FlatList
           data={listData}
@@ -185,54 +249,46 @@ export default function DeliveryUnifiedQueueScreen({ navigation }) {
           ListEmptyComponent={<Text style={[kiosk.hint, { textAlign }]}>{tUi('deliveryUnifiedQueueEmpty', locale)}</Text>}
           renderItem={({ item }) => {
             const isRepair = item._kind === 'repair';
-            const customerLine = isRepair
-              ? repairInboxCustomerLabel(item, tUi, locale)
-              : textForDisplay(item.customer_name || '', '');
+            const dept = departmentKey(item);
+            const theme = DEPT_THEME[dept] || DEPT_THEME.other;
             return (
-              <View style={kiosk.card}>
-                <DeliveryDestinationBadges row={item} textAlign={textAlign} tUi={tUi} locale={locale} />
-                <View style={styles.deptBadgeWrap}>
-                  {isRepair ? (
-                    <Text style={[styles.kindChip, styles.kindChipCenter]}>{tUi('badgeRepair', locale)}</Text>
-                  ) : null}
-                  {departmentBadgeKey(item) ? (
-                    <Text style={[styles.kindChip, styles.kindChipCenter, styles.deptChip]}>
-                      {tUi(departmentBadgeKey(item), locale)}
-                    </Text>
-                  ) : null}
-                  {!isRepair && !departmentBadgeKey(item) ? (
-                    <Text style={[styles.kindChip, styles.kindChipCenter]}>
-                      {tUi('badgeCustomerOrder', locale)}
-                    </Text>
-                  ) : null}
+              <View style={[styles.orderCard, { borderLeftColor: theme.bar }]}>
+                <View style={[styles.deptBadge, { backgroundColor: theme.bg }]}>
+                  <Text style={[styles.deptBadgeText, { color: theme.fg }]}>
+                    {departmentName(item, locale)}
+                  </Text>
                 </View>
-                <Text style={[styles.awaitingChip, { textAlign }]}>{tUi('deliveryStatus_completedAwaiting', locale)}</Text>
                 {isRepair ? (
-                  <Text style={kiosk.heroNumber}>{textForDisplay(item.return_number || '—', '—')}</Text>
+                  <Text style={[styles.hero, { textAlign }]}>{textForDisplay(item.return_number || '—', '—')}</Text>
                 ) : null}
                 {!isRepair && Array.isArray(item.lines) && item.lines.length ? (
                   item.lines.map((line, idx) => (
-                    <Text key={`${line.name}-${idx}`} style={[kiosk.metaLine, { textAlign }]}>
+                    <Text key={`${line.name}-${idx}`} style={[styles.productLine, { textAlign }]}>
                       {textForDisplay(line.name, '—')} × {Math.max(1, Number(line.quantity) || 1)}
                     </Text>
                   ))
                 ) : (
-                  <Text style={[kiosk.metaLine, { textAlign }]}>
+                  <Text style={[styles.productLine, { textAlign }]}>
                     {textForDisplay(item.assembly_name, '—')} × {item.quantity}
                   </Text>
                 )}
-                {customerLine ? (
-                  <Text style={[kiosk.hint, { textAlign }]}>{customerLine}</Text>
-                ) : null}
-                {!isRepair && item.quote_number ? (
-                  <Text style={[kiosk.hint, { textAlign }]}>{textForDisplay(item.quote_number, '')}</Text>
+                <DetailLine label={tUi('cardSource', locale)} value={sourceLabel(item, locale)} textAlign={textAlign} color={theme.fg} />
+                <DetailLine label={tUi('cardCustomer', locale)} value={customerDisplay(item, locale)} textAlign={textAlign} color={appTheme.textSecondary} />
+                <DetailLine label={tUi('cardDepartment', locale)} value={departmentName(item, locale)} textAlign={textAlign} color={appTheme.textSecondary} />
+                {!isRepair ? (
+                  <DetailLine
+                    label={tUi('cardQuoteNo', locale)}
+                    value={quoteDisplay(item)}
+                    textAlign={textAlign}
+                    color={appTheme.textSecondary}
+                  />
                 ) : null}
                 <Pressable
-                  style={kiosk.btnPrimaryBlock}
+                  style={[styles.deliverBtn, { backgroundColor: theme.bar }]}
                   disabled={busyId === item._key}
                   onPress={() => onDeliver(item)}
                 >
-                  <Text style={kiosk.btnPrimaryBlockText}>
+                  <Text style={styles.deliverBtnText}>
                     {isRepair ? tUi('deliveryRepairDeliverBtn', locale) : tUi('deliveryOrderDeliverBtn', locale)}
                   </Text>
                 </Pressable>
@@ -248,33 +304,44 @@ export default function DeliveryUnifiedQueueScreen({ navigation }) {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   list: { padding: 12, paddingBottom: 32, gap: 12 },
-  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 12, marginBottom: 4 },
+  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 12, marginBottom: 8 },
   filterChip: {
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
+    borderWidth: 1.5,
     borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  filterChipText: { fontSize: 13, fontWeight: '800' },
+  orderCard: {
+    backgroundColor: appTheme.card,
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: appTheme.border,
+    borderLeftWidth: 6,
+    gap: 4,
+  },
+  deptBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: 8,
     paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: '#fff',
-  },
-  filterChipOn: { backgroundColor: '#1e3a5f', borderColor: '#1e3a5f' },
-  filterChipText: { fontSize: 12, fontWeight: '700', color: '#334155' },
-  filterChipTextOn: { color: '#fff' },
-  deptBadgeWrap: { alignItems: 'center', marginBottom: 6, gap: 4 },
-  kindChip: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#475569',
-    marginBottom: 2,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  kindChipCenter: { textAlign: 'center', alignSelf: 'center' },
-  deptChip: { color: '#1e3a5f' },
-  awaitingChip: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#92400e',
+    paddingVertical: 4,
     marginBottom: 6,
   },
+  deptBadgeText: {
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  hero: { fontSize: 20, fontWeight: '800', color: appTheme.text, marginBottom: 4 },
+  productLine: { fontSize: 16, fontWeight: '700', color: appTheme.text, marginBottom: 6 },
+  detailLine: { fontSize: 14, fontWeight: '600', lineHeight: 20 },
+  deliverBtn: {
+    marginTop: 12,
+    minHeight: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deliverBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
 });

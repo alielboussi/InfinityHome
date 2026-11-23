@@ -9,6 +9,8 @@ const mustInclude = [
   ['src/mobile/mobileAccessManifest.js', 'warehouse_farm_1'],
   ['src/mobile/mobileAccessManifest.js', 'delivery_farm'],
   ['src/constants/farmWarehouseLocations.js', 'Farm Warehouse 1'],
+  ['src/constants/farmWarehouseLocations.js', 'listFarmWarehouseLocations'],
+  ['server/lib/farmWarehouseDelivery.js', 'farm_locations'],
   ['server/lib/farmWarehouseDelivery.js', 'fetchCatalogForFarmDelivery'],
   ['server/lib/ensureFarmWarehouseLocation.js', 'ensureFarmWarehouseLocation'],
   ['server/lib/warehouseFarmDeliveryNumber.js', 'FRM0000000001'],

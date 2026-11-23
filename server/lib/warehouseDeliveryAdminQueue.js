@@ -58,29 +58,207 @@ export async function markRepairWorkCompleteAwaitingDriver(sb, row, { now = new 
   };
 }
 
+function emptyQuoteCustomer() {
+  return {
+    customer_name: null,
+    customer_phone: null,
+    customer_order: false,
+    showroom_order: false,
+    quote_number: null,
+  };
+}
+
+function normalizeMatchName(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function quoteIdFromJobFields(job, meta = null) {
+  const parsed = meta || parseRowMetadata(job?.metadata);
+  const admin = parsed.delivery_admin || {};
+  return String(
+    job?.quote_id
+    || job?.carpentry_quote_id
+    || admin.quote_id
+    || parsed.quote_id
+    || parsed.carpentry_quote_id
+    || '',
+  ).trim();
+}
+
+function assemblyIdsFromRoutingMeta(meta, admin = {}) {
+  const ids = new Set();
+  const add = (value) => {
+    const id = String(value || '').trim();
+    if (id) ids.add(id);
+  };
+  add(admin.assembly_id);
+  add(meta?.primary_assembly_id);
+  add(meta?.assembly_id);
+  for (const line of quoteRoutingLineItems(meta)) {
+    add(line.assembly_id);
+    add(line.floor2_assembly_id);
+    add(line.catalog_assembly_id);
+    add(line.product_id);
+  }
+  return ids;
+}
+
+async function loadCustomerContactById(sb, customerId) {
+  const cid = String(customerId || '').trim();
+  if (!cid) return { name: null, phone: null };
+  const { data: cust } = await sb.from('customers').select('name, phone').eq('id', cid).maybeSingle();
+  if (cust?.name) {
+    return { name: String(cust.name).trim() || null, phone: String(cust.phone || '').trim() || null };
+  }
+  const { data: qc } = await sb.from('quote_customers').select('name, phone').eq('id', cid).maybeSingle();
+  return {
+    name: String(qc?.name || '').trim() || null,
+    phone: String(qc?.phone || '').trim() || null,
+  };
+}
+
 async function resolveQuoteOrderCustomer(sb, quoteId) {
   const qid = String(quoteId || '').trim();
-  if (!qid) {
-    return {
-      customer_name: null,
-      customer_phone: null,
-      customer_order: false,
-      showroom_order: false,
-      quote_number: null,
-    };
-  }
-  const { data: routing } = await sb.from(QUOTE_ROUTING).select('metadata').eq('quote_id', qid).maybeSingle();
+  if (!qid) return emptyQuoteCustomer();
+  const [{ data: routing }, { data: quote }] = await Promise.all([
+    sb.from(QUOTE_ROUTING).select('metadata').eq('quote_id', qid).maybeSingle(),
+    sb.from('quotations').select('id, quote_number, customer_id').eq('id', qid).maybeSingle(),
+  ]);
   const routingMeta = routing?.metadata || {};
   const showroom_order = routingMeta.showroom_order === true;
-  const customer_name = String(routingMeta.customer_name || '').trim() || null;
-  const customer_phone = String(routingMeta.customer_phone || '').trim() || null;
+  let customer_name = String(routingMeta.customer_name || '').trim() || null;
+  let customer_phone = String(routingMeta.customer_phone || '').trim() || null;
+  if ((!customer_name || !customer_phone) && quote?.customer_id) {
+    const contact = await loadCustomerContactById(sb, quote.customer_id);
+    customer_name = customer_name || contact.name;
+    customer_phone = customer_phone || contact.phone;
+  }
+  const quoteNumber = routingMeta.quote_number ?? quote?.quote_number;
   return {
     customer_name,
     customer_phone,
     customer_order: !showroom_order && Boolean(customer_name),
     showroom_order,
-    quote_number: routingMeta.quote_number || null,
+    quote_number: quoteNumber != null && String(quoteNumber).trim() ? String(quoteNumber).trim() : null,
   };
+}
+
+function routingStillOnDeliveryQueue(meta, completedAt) {
+  const admin = meta?.delivery_admin || {};
+  const stage = String(admin.stage || '').toLowerCase();
+  if (stage === DELIVERY_ADMIN_STAGE.AWAITING_DRIVER) return true;
+  if (stage && stage !== DELIVERY_ADMIN_STAGE.AWAITING_DRIVER) return false;
+  return !completedAt;
+}
+
+async function loadQuoteRoutingCandidates(sb) {
+  let { data, error } = await sb
+    .from(QUOTE_ROUTING)
+    .select('quote_id, route, completed_at, sent_to_production_at, metadata')
+    .not('sent_to_production_at', 'is', null)
+    .limit(800);
+  if (error) {
+    const fallback = await sb
+      .from(QUOTE_ROUTING)
+      .select('quote_id, route, completed_at, metadata')
+      .limit(800);
+    data = fallback.data;
+    error = fallback.error;
+  }
+  if (error || !data?.length) return [];
+  return data.map((row) => {
+    const meta = parseRowMetadata(row.metadata);
+    const admin = meta.delivery_admin || {};
+    const lines = quoteRoutingLineItems(meta);
+    return {
+      quote_id: String(row.quote_id || '').trim(),
+      route: String(row.route || admin.department || '').toLowerCase(),
+      awaiting: rowAwaitingDriver(admin),
+      on_queue: routingStillOnDeliveryQueue(meta, row.completed_at),
+      assembly_ids: assemblyIdsFromRoutingMeta(meta, admin),
+      names: new Set(lines.map((line) => normalizeMatchName(line.name)).filter(Boolean)),
+      quantity: quoteLinesTotalQty(lines, admin.quantity),
+      quote_number: admin.quote_number || meta.quote_number || null,
+      customer_name: String(meta.customer_name || '').trim() || null,
+      customer_phone: String(meta.customer_phone || '').trim() || null,
+      showroom_order: meta.showroom_order === true,
+    };
+  }).filter((row) => row.quote_id && row.on_queue);
+}
+
+function scoreQuoteCandidate(candidate, { assemblyId, assemblyName, department, quantity }) {
+  let score = 0;
+  if (candidate.assembly_ids.has(assemblyId)) score += 12;
+  const name = normalizeMatchName(assemblyName);
+  if (name && candidate.names.has(name)) score += 8;
+  else if (name && [...candidate.names].some((n) => n.includes(name) || name.includes(n))) score += 4;
+  if (department && candidate.route && candidate.route === String(department).toLowerCase()) score += 3;
+  if (candidate.awaiting) score += 4;
+  if (quantity && candidate.quantity === quantity) score += 2;
+  if (score < 8) return 0;
+  return score;
+}
+
+export async function lookupQuoteIdForAssembly(sb, assemblyId, {
+  department = '',
+  assemblyName = '',
+  quantity = 0,
+} = {}) {
+  const aid = String(assemblyId || '').trim();
+  if (!aid) return null;
+  const candidates = await loadQuoteRoutingCandidates(sb);
+  let best = null;
+  let bestScore = 0;
+  for (const candidate of candidates) {
+    const score = scoreQuoteCandidate(candidate, {
+      assemblyId: aid,
+      assemblyName,
+      department,
+      quantity: Math.max(0, Math.floor(Number(quantity) || 0)),
+    });
+    if (score > bestScore) {
+      best = candidate;
+      bestScore = score;
+    }
+  }
+  return best?.quote_id || null;
+}
+
+async function attachMissingQuoteIds(sb, rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  const missing = list.filter((row) => !String(row.quote_id || '').trim());
+  if (!missing.length) return list;
+  const candidates = await loadQuoteRoutingCandidates(sb);
+  if (!candidates.length) return list;
+  return list.map((row) => {
+    if (String(row.quote_id || '').trim()) return row;
+    const aid = String(row.assembly_id || '').trim();
+    let best = null;
+    let bestScore = 0;
+    for (const candidate of candidates) {
+      const score = scoreQuoteCandidate(candidate, {
+        assemblyId: aid,
+        assemblyName: row.assembly_name,
+        department: row.department,
+        quantity: Math.max(0, Math.floor(Number(row.quantity) || 0)),
+      });
+      if (score > bestScore) {
+        best = candidate;
+        bestScore = score;
+      }
+    }
+    if (!best) return row;
+    return {
+      ...row,
+      quote_id: best.quote_id,
+      quote_number: row.quote_number || best.quote_number || null,
+      customer_name: row.customer_name || best.customer_name || null,
+      customer_phone: row.customer_phone || best.customer_phone || null,
+      showroom_order: row.showroom_order === true || best.showroom_order === true,
+      customer_order: !(row.showroom_order === true || best.showroom_order === true)
+        && (row.customer_order === true || Boolean(best.customer_name)),
+    };
+  });
 }
 
 export async function registerProductionJobAwaitingDriver(sb, {
@@ -96,7 +274,7 @@ export async function registerProductionJobAwaitingDriver(sb, {
 }) {
   const meta = jobRow?.metadata || {};
   const resolvedQuoteId = String(
-    quoteId || meta.quote_id || meta.carpentry_quote_id || '',
+    quoteId || quoteIdFromJobFields(jobRow, meta) || '',
   ).trim() || null;
   const customerFields = resolvedQuoteId
     ? await resolveQuoteOrderCustomer(sb, resolvedQuoteId)
@@ -284,43 +462,70 @@ export async function listRepairDeliveriesForMobile(sb) {
 async function listCompletedJobsAwaitingDriver(sb, table, department) {
   const { data, error } = await sb
     .from(table)
-    .select('id, assembly_id, product_qty, metadata, status')
+    .select('*')
     .eq('status', 'completed')
     .limit(500);
   if (error) return [];
 
-  const out = [];
-  for (const job of data || []) {
+  const awaiting = (data || []).map((job) => {
     const meta = parseRowMetadata(job?.metadata);
     const admin = meta.delivery_admin;
-    if (!rowAwaitingDriver(admin)) continue;
+    if (!rowAwaitingDriver(admin)) return null;
+    if (String(admin.kind || DELIVERY_ADMIN_KIND.ORDER).toLowerCase() !== DELIVERY_ADMIN_KIND.ORDER) return null;
+    const dest = String(meta.finish_destination || admin.finish_destination || 'delivery').toLowerCase();
+    if (dest === 'floor1') return null;
     const asmId = String(admin.assembly_id || job.assembly_id || '').trim();
-    if (!asmId) continue;
-    const { data: asm } = await sb.from(ASSEMBLIES).select('name, family_sku').eq('id', asmId).maybeSingle();
+    if (!asmId) return null;
+    return { job, meta, admin, asmId };
+  }).filter(Boolean);
+
+  const runIds = [...new Set(awaiting
+    .map((row) => String(row.meta.production_run_id || '').trim())
+    .filter(Boolean))];
+  const runQuoteById = new Map();
+  if (runIds.length) {
+    const { data: runs } = await sb.from('carpentry_production_runs').select('id, quote_id').in('id', runIds);
+    (runs || []).forEach((run) => {
+      const qid = String(run.quote_id || '').trim();
+      if (qid) runQuoteById.set(String(run.id), qid);
+    });
+  }
+
+  const asmIds = [...new Set(awaiting.map((row) => row.asmId))];
+  const asmById = new Map();
+  if (asmIds.length) {
+    const { data: assemblies } = await sb.from(ASSEMBLIES).select('id, name, family_sku').in('id', asmIds);
+    (assemblies || []).forEach((asm) => asmById.set(String(asm.id), asm));
+  }
+
+  return awaiting.map(({ job, meta, admin, asmId }) => {
+    const asm = asmById.get(asmId);
     const showroom_order = admin.showroom_order === true || meta.showroom_order === true;
-    const customer_name = String(admin.customer_name || meta.customer_name || '').trim() || null;
+    const customer_name = String(admin.customer_name || meta.customer_name || job.customer_name || '').trim() || null;
     const customer_order = !showroom_order && (
       admin.customer_order === true
       || meta.customer_order === true
       || Boolean(customer_name)
     );
-    out.push({
+    const quote_id = quoteIdFromJobFields(job, meta)
+      || String(runQuoteById.get(String(meta.production_run_id || '')) || '').trim()
+      || null;
+    return {
       production_job_id: String(job.id),
       assembly_id: asmId,
-      assembly_name: admin.assembly_name || asm?.name || asmId,
+      assembly_name: admin.assembly_name || job.product_name || asm?.name || asmId,
       family_sku: asm?.family_sku || '',
       quantity: Math.max(1, Number(admin.quantity || job.product_qty) || 1),
-      quote_id: admin.quote_id || null,
-      quote_number: admin.quote_number || null,
+      quote_id: quote_id || null,
+      quote_number: admin.quote_number || meta.quote_number || job.quote_number || null,
       customer_name,
-      customer_phone: String(admin.customer_phone || meta.customer_phone || '').trim() || null,
+      customer_phone: String(admin.customer_phone || meta.customer_phone || job.customer_phone || '').trim() || null,
       showroom_order,
       customer_order,
       department: admin.department || department,
       delivery_admin_stage: DELIVERY_ADMIN_STAGE.AWAITING_DRIVER,
-    });
-  }
-  return out;
+    };
+  });
 }
 
 async function listPartialQuoteDeliveryHolds(sb) {
@@ -466,19 +671,59 @@ export async function assertAdminQueueDeliveryHold(sb, {
 }
 
 export async function listOrderDeliveriesForMobile(sb) {
-  const [carpentry, upholstery, painting, quotes] = await Promise.all([
+  const [carpentry, upholstery, painting, partials] = await Promise.all([
     listCompletedJobsAwaitingDriver(sb, CARPENTRY_JOBS, 'carpentry'),
     listCompletedJobsAwaitingDriver(sb, UPHOLSTERY_JOBS, 'upholstery'),
     listCompletedJobsAwaitingDriver(sb, PAINTING_JOBS, 'painting'),
-    listQuoteOrdersAwaitingDriver(sb),
+    listPartialQuoteDeliveryHolds(sb),
   ]);
-  const merged = [...carpentry, ...upholstery, ...painting, ...quotes];
+  const merged = [...carpentry, ...upholstery, ...painting, ...partials];
   const seen = new Set();
-  return merged.filter((row) => {
-    const key = `${row.assembly_id}:${row.production_job_id || ''}:${row.quote_id || ''}`;
+  const unique = merged.filter((row) => {
+    const key = `${row.assembly_id}:${row.production_job_id || ''}:${row.quote_id || ''}:${row.partial_quote_hold_id || ''}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
+  });
+  const withQuotes = await attachMissingQuoteIds(sb, unique);
+  return hydrateQuoteCustomerAndNumber(sb, withQuotes);
+}
+
+async function hydrateQuoteCustomerAndNumber(sb, rows) {
+  const ids = [...new Set((rows || []).map((r) => String(r.quote_id || '').trim()).filter(Boolean))];
+  if (!ids.length) return rows;
+  const { data: quotes } = await sb
+    .from('quotations')
+    .select('id, quote_number, customer_id')
+    .in('id', ids);
+  const quoteById = new Map((quotes || []).map((q) => [String(q.id), q]));
+  const customerIds = [...new Set((quotes || []).map((q) => String(q.customer_id || '').trim()).filter(Boolean))];
+  const contactById = new Map();
+  if (customerIds.length) {
+    const { data: customers } = await sb.from('customers').select('id, name, phone').in('id', customerIds);
+    (customers || []).forEach((c) => contactById.set(String(c.id), c));
+    const missing = customerIds.filter((id) => !contactById.get(id)?.name);
+    if (missing.length) {
+      const { data: qc } = await sb.from('quote_customers').select('id, name, phone').in('id', missing);
+      (qc || []).forEach((c) => {
+        if (!contactById.get(String(c.id))?.name) contactById.set(String(c.id), c);
+      });
+    }
+  }
+  return (rows || []).map((row) => {
+    const q = quoteById.get(String(row.quote_id || '').trim());
+    if (!q) return row;
+    const contact = contactById.get(String(q.customer_id || '').trim());
+    const quoteNumber = String(row.quote_number ?? q.quote_number ?? '').trim() || null;
+    const customerName = String(row.customer_name || contact?.name || '').trim() || null;
+    const customerPhone = String(row.customer_phone || contact?.phone || '').trim() || null;
+    return {
+      ...row,
+      quote_number: quoteNumber,
+      customer_name: customerName,
+      customer_phone: customerPhone,
+      customer_order: row.showroom_order === true ? false : (row.customer_order === true || Boolean(customerName)),
+    };
   });
 }
 

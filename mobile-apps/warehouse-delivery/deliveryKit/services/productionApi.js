@@ -348,6 +348,7 @@ export async function createProductionProductOnly({
     name,
     warehouse_location_id: warehouseLocationId,
     initial_quantity: initialQuantity,
+    floor2_product_qty: initialQuantity,
     packet_number: 1,
     qty_per_unit: 1,
     client_source: CLIENT_SOURCE,
@@ -426,6 +427,7 @@ export async function createProductionPacket({
     name,
     warehouse_location_id: warehouseLocationId,
     initial_quantity: initialQuantity,
+    floor2_product_qty: initialQuantity,
     packet_number: 1,
     qty_per_unit: 1,
     client_source: CLIENT_SOURCE,
@@ -574,42 +576,52 @@ export async function fetchProductionQuoteArabicTranslations(texts = []) {
   }
 }
 
-export async function acceptUpholsteryQuote(quoteId) {
+function quoteCardPayload(productionLineSet) {
+  const set = String(productionLineSet || '').trim();
+  return set ? { production_line_set: set } : {};
+}
+
+export async function acceptUpholsteryQuote(quoteId, { productionLineSet = null } = {}) {
   return productionOp('production-quote-accept', {
     route: UPHOLSTERY_ROUTE,
     quote_id: quoteId,
+    ...quoteCardPayload(productionLineSet),
   });
 }
 
-export async function completeUpholsteryQuote(quoteId, { destination = 'delivery' } = {}) {
+export async function completeUpholsteryQuote(quoteId, { destination = 'delivery', productionLineSet = null } = {}) {
   const dest = String(destination || 'delivery').toLowerCase() === 'floor1' ? 'floor1' : 'delivery';
   return productionOp('production-quote-complete', {
     route: UPHOLSTERY_ROUTE,
     quote_id: quoteId,
     destination: dest,
+    ...quoteCardPayload(productionLineSet),
   });
 }
 
-export async function pauseUpholsteryQuote(quoteId) {
+export async function pauseUpholsteryQuote(quoteId, { productionLineSet = null } = {}) {
   return productionOp('production-quote-pause', {
     route: UPHOLSTERY_ROUTE,
     quote_id: quoteId,
+    ...quoteCardPayload(productionLineSet),
   });
 }
 
-export async function resumeUpholsteryQuote(quoteId) {
+export async function resumeUpholsteryQuote(quoteId, { productionLineSet = null } = {}) {
   return productionOp('production-quote-resume', {
     route: UPHOLSTERY_ROUTE,
     quote_id: quoteId,
+    ...quoteCardPayload(productionLineSet),
   });
 }
 
-export async function markUpholsteryQuoteLineReady(quoteId, itemId, readyQty) {
+export async function markUpholsteryQuoteLineReady(quoteId, itemId, readyQty, { productionLineSet = null } = {}) {
   return productionOp('production-quote-line-ready', {
     route: UPHOLSTERY_ROUTE,
     quote_id: quoteId,
     item_id: itemId,
     ready_qty: readyQty,
+    ...quoteCardPayload(productionLineSet),
   });
 }
 

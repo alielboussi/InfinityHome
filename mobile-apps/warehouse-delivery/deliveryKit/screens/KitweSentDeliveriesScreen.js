@@ -28,12 +28,9 @@ function statusLabel(status, locale) {
 
 function sentKindLabel(documentKind, locale) {
   const dk = String(documentKind || '').toLowerCase();
-  if (dk === 'farm_delivery' || dk === 'farm_return') return tUi('sentDeliveryKindFarm', locale);
-  if (dk === 'repair_delivery' || dk === 'return' || dk === 'return_shipment' || dk === 'return_customer_delivery') {
-    return tUi('sentDeliveryKindRepair', locale);
-  }
-  if (dk === 'showroom_delivery') return tUi('sentDeliveryKindShowroom', locale);
-  if (dk === 'order_delivery' || dk === 'sold_delivery') return tUi('sentDeliveryKindCustomer', locale);
+  if (dk === 'repair_delivery') return tUi('sentDeliveryKindRepair', locale);
+  if (dk === 'order_delivery') return tUi('sentDeliveryKindOrder', locale);
+  if (dk === 'sold_delivery') return tUi('sentDeliveryKindSold', locale);
   return tUi('sentDeliveryKindFloor1', locale);
 }
 

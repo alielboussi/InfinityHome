@@ -1,5 +1,8 @@
 import { resolveWarehouseFloor2Location } from '../../src/constants/warehouseFloorLocations.js';
-import { resolveFarmWarehouse1Location } from '../../src/constants/farmWarehouseLocations.js';
+import {
+  listFarmWarehouseLocations,
+  resolveFarmWarehouse1Location,
+} from '../../src/constants/farmWarehouseLocations.js';
 import { buildFarmReturnSendCatalogRows, buildFarmSendCatalogRows } from '../../src/utils/farmWarehouseCatalogView.js';
 import { readWarehouseFloor2WipImageUrl } from '../../src/utils/warehouseFloor2WipImage.js';
 import { allocateFarmDeliveryNumber } from './warehouseFarmDeliveryNumber.js';
@@ -11,16 +14,33 @@ import { ensureFarmWarehouseLocation } from './ensureFarmWarehouseLocation.js';
 import { KITWE_LOCATION_ID } from '../../src/constants/warehouseShowroomLocations.js';
 
 export async function resolveFarmWarehouseIds(sb) {
-  const { data: locRows, error } = await sb.from('locations').select('id, name');
+  const { data: locRows, error } = await sb.from('locations').select('id, name, metadata');
   if (error) throw new Error(error.message || 'Failed to load locations');
   const floor2Loc = resolveWarehouseFloor2Location(locRows || []);
-  let farmLoc = resolveFarmWarehouse1Location(locRows || []);
+  let farmLocations = listFarmWarehouseLocations(locRows || []);
+  let farmLoc = resolveFarmWarehouse1Location(farmLocations.length ? farmLocations : locRows || []);
   if (!floor2Loc?.id) throw new Error('Warehouse Floor 2 location is not configured.');
   if (!farmLoc?.id) {
     const created = await ensureFarmWarehouseLocation(sb);
     farmLoc = { id: created.id, name: created.name };
+    farmLocations = [{ id: created.id, name: created.name }];
   }
-  return { floor2Id: String(floor2Loc.id), farmId: String(farmLoc.id) };
+  return {
+    floor2Id: String(floor2Loc.id),
+    farmId: String(farmLoc.id),
+    farmName: String(farmLoc.name || '').trim() || 'Farm',
+    farmLocations: farmLocations.map((l) => ({
+      id: String(l.id),
+      name: String(l.name || '').trim() || 'Farm',
+    })),
+  };
+}
+
+function pickFarmLocation(ids, requestedId) {
+  const want = String(requestedId || '').trim();
+  const hit = (ids.farmLocations || []).find((l) => l.id === want);
+  if (hit) return hit;
+  return { id: ids.farmId, name: ids.farmName };
 }
 
 export async function creditFarmStockFromDeliveryEntries(sb, entries, farmId) {
@@ -306,8 +326,11 @@ export async function catalogFarmList(sb) {
   return { products, farm_location_id: farmId, floor2_location_id: floor2Id };
 }
 
-export async function farmReturnCatalog(sb) {
-  const { floor2Id, farmId } = await resolveFarmWarehouseIds(sb);
+export async function farmReturnCatalog(sb, { farmLocationId } = {}) {
+  const ids = await resolveFarmWarehouseIds(sb);
+  const farm = pickFarmLocation(ids, farmLocationId);
+  const farmId = farm.id;
+  const floor2Id = ids.floor2Id;
   const [{ data: assemblies, error: aErr }, { data: invRows, error: invErr }] = await Promise.all([
     sb.from('warehouse_assemblies').select('id, name, family_sku, item_kind, metadata, category_id, image_url'),
     sb.from('warehouse_assembly_inventory').select('assembly_id, quantity, location_id')
@@ -332,11 +355,20 @@ export async function farmReturnCatalog(sb) {
     floor2_image_url: row.floor2_image_url,
     image_url: row.floor2_image_url,
   }));
-  return { products, farm_location_id: farmId, floor2_location_id: floor2Id };
+  return {
+    products,
+    farm_location_id: farmId,
+    farm_location_name: farm.name,
+    farm_locations: ids.farmLocations,
+    floor2_location_id: floor2Id,
+  };
 }
 
-export async function openFarmReturnSession(sb, user, email) {
-  const { floor2Id, farmId } = await resolveFarmWarehouseIds(sb);
+export async function openFarmReturnSession(sb, user, email, { farmLocationId } = {}) {
+  const ids = await resolveFarmWarehouseIds(sb);
+  const farm = pickFarmLocation(ids, farmLocationId);
+  const farmId = farm.id;
+  const floor2Id = ids.floor2Id;
   if (email) {
     const { data: existing } = await sb
       .from('warehouse_delivery_sessions')
@@ -357,9 +389,22 @@ export async function openFarmReturnSession(sb, user, email) {
           delivery_number: transferRef,
           updated_at: now,
         }).eq('id', existing.id);
-        return { session_id: existing.id, transfer_ref: transferRef, reused: true, migrated_ref: true };
+        return {
+          session_id: existing.id,
+          transfer_ref: transferRef,
+          reused: true,
+          migrated_ref: true,
+          farm_location_id: farmId,
+          farm_location_name: farm.name,
+        };
       }
-      return { session_id: existing.id, transfer_ref: currentRef, reused: true };
+      return {
+        session_id: existing.id,
+        transfer_ref: currentRef,
+        reused: true,
+        farm_location_id: farmId,
+        farm_location_name: farm.name,
+      };
     }
   }
   const transferRef = await allocateFarmReturnNumber();
@@ -384,7 +429,13 @@ export async function openFarmReturnSession(sb, user, email) {
   };
   const { error } = await sb.from('warehouse_delivery_sessions').insert(row);
   if (error) throw new Error(error.message || 'Failed to open farm return session');
-  return { session_id: sessionId, transfer_ref: transferRef, reused: false };
+  return {
+    session_id: sessionId,
+    transfer_ref: transferRef,
+    reused: false,
+    farm_location_id: farmId,
+    farm_location_name: farm.name,
+  };
 }
 
 /**
@@ -405,8 +456,6 @@ export async function submitFarmReturnDelivery(sb, body, user) {
   }
   const toKitwe = destRaw === 'kitwe';
 
-  const { floor2Id, farmId } = await resolveFarmWarehouseIds(sb);
-  const creditLocationId = toKitwe ? KITWE_LOCATION_ID : floor2Id;
   const { data: session, error: sErr } = await sb
     .from('warehouse_delivery_sessions')
     .select('*')
@@ -415,7 +464,16 @@ export async function submitFarmReturnDelivery(sb, body, user) {
   if (sErr) throw new Error(sErr.message || 'Failed to load session');
   if (!session) throw new Error('Transfer session not found.');
   if (String(session.status) !== 'draft') throw new Error('This transfer was already submitted.');
-  if (String(session.from_location) !== farmId) {
+
+  const ids = await resolveFarmWarehouseIds(sb);
+  const farmIds = new Set((ids.farmLocations || []).map((l) => l.id));
+  const fromLoc = String(session.from_location || '');
+  const farmId = farmIds.has(fromLoc)
+    ? fromLoc
+    : pickFarmLocation(ids, body.farm_location_id || body.farmLocationId).id;
+  const floor2Id = ids.floor2Id;
+  const creditLocationId = toKitwe ? KITWE_LOCATION_ID : floor2Id;
+  if (!farmIds.has(String(session.from_location || '')) && String(session.from_location) !== farmId) {
     throw new Error('Not a Farm Warehouse transfer session.');
   }
   const sessionTo = String(session.to_location || '');

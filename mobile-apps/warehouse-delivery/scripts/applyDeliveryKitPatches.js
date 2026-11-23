@@ -265,10 +265,11 @@ function patchDeliveryHubI18n(filePath) {
   deliveryRepairCustomer: { en: 'Customer pickup', ar: 'استلام العميل' },
   customerDriverSave: { en: 'Save', ar: 'حفظ' },
   dashFloor1Deliveries: { en: 'Floor 1 Deliveries', ar: 'تسليمات الطابق 1' },
+  dashFarmDeliveries: { en: 'Farm Deliveries', ar: 'تسليمات المزرعة' },
   dashDeliveryRepairs: { en: 'Repairs', ar: 'إصلاحات' },
   dashDeliveryOrders: { en: 'Orders', ar: 'طلبات' },
 `;
-  if (s.includes('dashFloor1Deliveries')) return;
+  if (s.includes('dashFarmDeliveries') && s.includes('dashFloor1Deliveries')) return;
   if (s.includes('deliveryHubTab_repairs') && s.includes('deliveryRepairQueueEmpty')) return;
   const ordersLine = "  deliveryHubTab_orders: { en: 'Orders', ar: 'طلبات' },";
   const queueExtra = `
@@ -308,6 +309,7 @@ function patchDeliveryHubI18n(filePath) {
       dashLine,
       `${dashLine}
   dashFloor1Deliveries: { en: 'Floor 1 Deliveries', ar: 'تسليمات الطابق 1' },
+  dashFarmDeliveries: { en: 'Farm Deliveries', ar: 'تسليمات المزرعة' },
   dashDeliveryRepairs: { en: 'Repairs', ar: 'إصلاحات' },
   dashDeliveryOrders: { en: 'Orders', ar: 'طلبات' },`,
     );

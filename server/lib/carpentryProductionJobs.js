@@ -326,6 +326,13 @@ export async function finishCarpentryProductionJob(sb, {
   const productId = String(job.assembly_id || '').trim();
   const meta = job.metadata || {};
   const qty = Math.max(1, Math.floor(Number(job.product_qty) || 1));
+  const { lookupQuoteIdForAssembly } = await import('./warehouseDeliveryAdminQueue.js');
+  const linkedQuoteId = String(meta.quote_id || meta.carpentry_quote_id || job.quote_id || '').trim()
+    || await lookupQuoteIdForAssembly(sb, productId, {
+      department: 'carpentry',
+      assemblyName: job.product_name,
+      quantity: qty,
+    });
   let materialUsageRows = Array.isArray(meta.material_usage_rows) ? meta.material_usage_rows : [];
   const storeroomIds = Array.isArray(meta.storeroom_location_ids) ? meta.storeroom_location_ids : [];
 
@@ -352,7 +359,7 @@ export async function finishCarpentryProductionJob(sb, {
     const { error: runErr } = await sb.from(RUNS).insert({
       id: runId,
       source: 'carpentry_floor',
-      quote_id: null,
+      quote_id: linkedQuoteId || null,
       assembly_id: productId,
       product_qty: qty,
       started_at: job.started_at || now,
@@ -414,6 +421,7 @@ export async function finishCarpentryProductionJob(sb, {
     timer_started_at: null,
     metadata: {
       ...meta,
+      ...(linkedQuoteId ? { quote_id: linkedQuoteId, carpentry_quote_id: linkedQuoteId } : {}),
       production_run_id: runId || null,
       finish_destination: dest,
       floor1_credited: floor1Credited,
@@ -433,6 +441,7 @@ export async function finishCarpentryProductionJob(sb, {
       assemblyName: asm?.name || productId,
       qty,
       department: 'carpentry',
+      quoteId: linkedQuoteId || null,
     });
     deliveryQueued = true;
   }

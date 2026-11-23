@@ -23,10 +23,6 @@ async function openStagedDelivery(navigation, row) {
     quote_id: row.quote_id || null,
     quote_number: row.quote_number || null,
     production_job_id: row.production_job_id || null,
-    partial_quote_hold_id: row.partial_quote_hold_id || null,
-    customer_name: row.customer_name || '',
-    customer_phone: row.customer_phone || '',
-    showroom_order: row.showroom_order === true,
     finished_driver_checked: true,
     finished_driver_checked_at: now,
   }];
@@ -43,10 +39,9 @@ async function openStagedDelivery(navigation, row) {
     groups,
     printGroups,
     queueKind: 'order',
-    documentKind: row.showroom_order ? 'showroom_delivery' : 'order_delivery',
+    documentKind: 'order_delivery',
     customerName: row.customer_name || '',
     customerPhone: row.customer_phone || '',
-    partialDelivery: Boolean(row.partial_quote_hold_id || row.partial),
   });
 }
 

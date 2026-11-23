@@ -10,6 +10,7 @@ const repoRoot = path.resolve(appRoot, '..', '..');
 const COPY_PAIRS = [
   ['quoteProductionItemFields.js', 'quoteProductionItemFields.js'],
   ['quoteProductionLineProgress.js', 'quoteProductionLineProgress.js'],
+  ['warehouseAccessoryCatalog.js', 'warehouseAccessoryCatalog.js'],
 ];
 
 function sha(filePath) {

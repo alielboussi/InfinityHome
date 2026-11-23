@@ -39,20 +39,20 @@ export async function prepareShareableDeliveryNotePdfUri(printUri, deliveryNumbe
   }
 }
 
-export async function previewOrSharePdfFile(fileUri, dialogTitle, { forceShare = false } = {}) {
-  const Sharing = await import('expo-sharing');
-  const canShare = await Sharing.isAvailableAsync();
-  if (forceShare || !(await File.canPreview(new File(fileUri)))) {
-    if (!canShare) {
-      throw new Error('Sharing is not available on this device.');
-    }
-    await Sharing.shareAsync(fileUri, {
-      mimeType: 'application/pdf',
-      UTI: 'com.adobe.pdf',
-      dialogTitle: dialogTitle || 'Delivery note',
-    });
+export async function previewOrSharePdfFile(fileUri, dialogTitle) {
+  const file = new File(fileUri);
+  if (await File.canPreview(file)) {
+    await File.preview(file, { title: dialogTitle });
     return;
   }
-  const file = new File(fileUri);
-  await File.preview(file, { title: dialogTitle });
+  const Sharing = await import('expo-sharing');
+  const canShare = await Sharing.isAvailableAsync();
+  if (!canShare) {
+    throw new Error('PDF viewer is not available on this device.');
+  }
+  await Sharing.shareAsync(fileUri, {
+    mimeType: 'application/pdf',
+    UTI: 'com.adobe.pdf',
+    dialogTitle: dialogTitle || 'Delivery note',
+  });
 }

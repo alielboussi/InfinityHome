@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -130,14 +130,36 @@ export default function DashboardScreen({
   let tiles = grant
     ? allTiles.filter((t) => (
       t.hubScreenIds
-        ? isWorkshopOrdersHubAllowed(grant, 'warehouse_delivery_app', t.hubScreenIds)
-        : isWorkshopOrDeliveryScreenAllowed(grant, t.screenId, 'warehouse_delivery_app')
+        ? isWorkshopOrdersHubAllowed(grant, null, t.hubScreenIds)
+        : isWorkshopOrDeliveryScreenAllowed(grant, t.screenId, null)
     ))
     : [];
+  // Skip dashboard only when Farm is the sole enabled Delivery page.
+  // Any extra page (Floor 1, Orders, Sent, Sold) keeps the dashboard tiles.
+  const farmOnlyHome = Boolean(
+    allowed
+    && !accessBooting
+    && tiles.length === 1
+    && tiles[0]?.key === 'farm',
+  );
+
+  useEffect(() => {
+    if (!farmOnlyHome) return;
+    navigation.replace('WarehouseFromFarmHome', { hideBack: true });
+  }, [farmOnlyHome, navigation]);
+
   const tileCount = Math.max(1, tiles.length);
   const {
     tileWidth, tileHeight, gap, contentWidth,
   } = useProductionDashboardTileLayout(tileCount);
+
+  if (farmOnlyHome) {
+    return (
+      <View style={[kiosk.screen, styles.root, { paddingTop: insets.top + 16 }]}>
+        <ActivityIndicator size="large" color={theme.primary} />
+      </View>
+    );
+  }
 
   if (!allowed) {
     return (

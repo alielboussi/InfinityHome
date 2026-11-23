@@ -3,6 +3,23 @@
  * Delivery-only i18n keys survive upholstery materialize.
  */
 export const DELIVERY_HUB_I18N = {
+  dashFarmDeliveries: { en: 'Farm Deliveries', ar: 'تسليمات المزرعة' },
+  deliveryFarmDestFloor2: { en: 'Floor 2', ar: 'الطابق 2' },
+  deliveryFarmDestKitwe: { en: 'Kitwe', ar: 'كيتوي' },
+  deliveryFarmContinue: { en: 'Continue', ar: 'متابعة' },
+  deliveryFarmSend: { en: 'Send', ar: 'إرسال' },
+  deliveryFarmAddToCart: { en: 'Add', ar: 'إضافة' },
+  deliveryFarmOpenPdf: { en: 'Open PDF', ar: 'فتح PDF' },
+  deliveryFarmDone: { en: 'Done', ar: 'تم' },
+  filterAll: { en: 'All', ar: 'الكل' },
+  filterCarpentry: { en: 'Carpentry', ar: 'النجارة' },
+  filterUpholstery: { en: 'Upholstery', ar: 'التنجيد' },
+  filterPainting: { en: 'Painting', ar: 'الدهان' },
+  filterRepair: { en: 'Repair', ar: 'إصلاح' },
+  cardSource: { en: 'Source', ar: 'المصدر' },
+  cardCustomer: { en: 'Customer', ar: 'الزبون' },
+  cardDepartment: { en: 'Department', ar: 'القسم' },
+  cardQuoteNo: { en: 'Quote #', ar: 'رقم العرض' },
   deliveryHubTitle: { en: 'Delivery', ar: 'التسليم' },
   deliveryHubTab_floor1: { en: 'Floor 1', ar: 'الطابق 1' },
   deliveryHubTab_repairs: { en: 'Repairs', ar: 'إصلاحات' },

@@ -88,6 +88,7 @@ export default function WarehouseFromFarmSignatureScreen({ route, navigation }) 
         lines,
         share_groups: shareGroups,
         credit_destination: creditDestination,
+        farm_location_id: route.params?.farmLocationId || '',
       });
 
       navigation.replace('WarehouseFromFarmDone', {
@@ -202,14 +203,14 @@ export default function WarehouseFromFarmSignatureScreen({ route, navigation }) 
       />
 
       <Pressable
-        style={[kiosk.btnPrimaryBlock, (!sigValid || busy) && styles.btnDisabled]}
+        style={[styles.sendBtn, (!sigValid || busy) && styles.btnDisabled]}
         onPress={submit}
         disabled={!sigValid || busy}
       >
         {busy ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <Text style={kiosk.btnPrimaryBlockText}>{tUi('deliverySubmit', locale)}</Text>
+          <Text style={styles.sendBtnText}>{tUi('deliveryFarmSend', locale)}</Text>
         )}
       </Pressable>
 
@@ -233,7 +234,16 @@ export default function WarehouseFromFarmSignatureScreen({ route, navigation }) 
 }
 
 const styles = StyleSheet.create({
-  wrap: { flexGrow: 1 },
+  wrap: { flexGrow: 1, paddingHorizontal: 16 },
   driverField: { marginTop: 8 },
+  sendBtn: {
+    marginTop: 16,
+    minHeight: 52,
+    borderRadius: 12,
+    backgroundColor: '#047857',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sendBtnText: { color: '#fff', fontSize: 17, fontWeight: '800' },
   btnDisabled: { opacity: 0.5 },
 });

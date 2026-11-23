@@ -150,6 +150,16 @@ try {
   assert(!appJs.includes('DeliverySendHub'), 'Delivery hub tabs removed — queues are dashboard tiles');
   const dashboard = fs.readFileSync(path.join(appRoot, 'screens', 'DashboardScreen.js'), 'utf8');
   assert(dashboard.includes('dashFloor1Deliveries'), 'Dashboard must label Floor 1 Deliveries');
+  assert(dashboard.includes('dashFarmDeliveries'), 'Dashboard must label Farm Deliveries');
+  assert(
+    dashboard.includes("replace('WarehouseFromFarmHome'"),
+    'Farm-only Delivery users must land on Farm Deliveries (no dashboard)',
+  );
+  assert(
+    dashboard.includes('tiles.length === 1')
+      && dashboard.includes("tiles[0]?.key === 'farm'"),
+    'Dashboard must stay visible when more than Farm Deliveries is enabled',
+  );
   assert(dashboard.includes("navigate('KitweSendHome')"), 'Floor 1 tile must open KitweSendHome');
   assert(
     dashboard.includes("navigate('DeliveryUnifiedQueue')"),
@@ -258,8 +268,40 @@ try {
     }
   }
 
+  const unified = fs.readFileSync(
+    path.join(appRoot, 'deliveryKit', 'screens', 'DeliveryUnifiedQueueScreen.js'),
+    'utf8',
+  );
+  assert(unified.includes('cardSource'), 'Orders queue cards must show source');
+  assert(unified.includes('cardCustomer'), 'Orders queue cards must show customer');
+  assert(unified.includes('cardDepartment'), 'Orders queue cards must show department');
+  assert(unified.includes('cardQuoteNo'), 'Orders queue cards must show quote #');
+  assert(unified.includes('KitweSendSignature'), 'Deliver order must open driver + signature screen');
+  assert(!unified.includes('DeliveryDestinationBadges'), 'Orders badges must be department name only');
+  assert(
+    fs.existsSync(path.join(appRoot, 'deliveryKit', 'lib', 'goDashboardThenOpenNote.js')),
+    'goDashboardThenOpenNote.js required so submit opens PDF (not in-app A4 print)',
+  );
+
+  const farmHome = fs.readFileSync(
+    path.join(appRoot, 'deliveryKit', 'screens', 'WarehouseFromFarmHomeScreen.js'),
+    'utf8',
+  );
+  assert(farmHome.includes('deliveryFarmContinue'), 'Farm home Continue button must be labeled Continue');
+  assert(farmHome.includes('deliveryFarmDestFloor2'), 'Farm destination must be Floor 2');
+  assert(farmHome.includes('deliveryFarmDestKitwe'), 'Farm destination must be Kitwe');
+
   const deliveryOnlyI18nKeys = [
     'dashFloor1Deliveries',
+    'dashFarmDeliveries',
+    'deliveryFarmContinue',
+    'deliveryFarmSend',
+    'deliveryFarmDestFloor2',
+    'filterCarpentry',
+    'filterUpholstery',
+    'filterPainting',
+    'cardSource',
+    'cardQuoteNo',
     'dashDeliveryRepairs',
     'dashDeliveryOrders',
     'deliveryRepairQueueEmpty',
@@ -308,6 +350,14 @@ try {
   const canonicalArabic = fs.readFileSync(path.join(mobileSharedRoot, 'quoteArabicTranslate.js'), 'utf8');
   const quoteOrderUi = fs.readFileSync(path.join(appRoot, 'shared', 'quoteProductionOrderUi.js'), 'utf8');
   const quoteArabic = fs.readFileSync(path.join(appRoot, 'shared', 'quoteArabicTranslate.js'), 'utf8');
+  assert(
+    fs.existsSync(path.join(appRoot, 'deliveryKit', 'lib', 'warehouseAccessoryCatalog.js')),
+    'deliveryKit warehouseAccessoryCatalog.js required — run ensureDeliveryQuotePrintUtils',
+  );
+  assert(
+    fs.existsSync(path.join(appRoot, 'delivery-overlays', 'lib', 'warehouseAccessoryCatalog.js')),
+    'delivery-overlays warehouseAccessoryCatalog.js required — run ensureDeliveryQuotePrintUtils',
+  );
   const quoteFields = fs.readFileSync(path.join(appRoot, 'deliveryKit', 'lib', 'quoteProductionItemFields.js'), 'utf8');
   const dimSetsMarker = 'dimension_sets: Array.isArray(line.dimension_sets)';
   const perPieceMarker = 'Supports per-piece `dimension_sets`';

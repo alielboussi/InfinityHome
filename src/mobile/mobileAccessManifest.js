@@ -158,10 +158,13 @@ export function evaluateOrdersAppAccess(grant, email) {
   return isOrdersAppAllowed(grant);
 }
 
-/** Driver delivery Android app — User Access → Delivery (`warehouse_delivery_app` only). */
+/** Driver delivery Android app — User Access → Delivery (app flag or any Delivery page). */
 export function evaluateWarehouseDeliveryDriverAppAccess(grant, email) {
   if (isProductionLoginAccessAdminEmail(email)) return true;
-  return isWarehouseDeliveryAppAllowed(grant);
+  if (isWarehouseDeliveryAppAllowed(grant)) return true;
+  return DELIVERY_APP_SCREENS.some((s) => (
+    isWorkshopOrDeliveryScreenAllowed(grant, s.id, 'warehouse_delivery_app')
+  ));
 }
 
 export function isWarehouseProductStockQtyEditAllowed(grant) {
@@ -526,7 +529,7 @@ export const DELIVERY_APP_SCREENS = Object.freeze([
   {
     id: 'delivery_farm',
     label: 'Farm deliveries',
-    description: 'Send Farm Warehouse 1 stock to Floor 2 WIP or Kitwe (driver, signature, A4 PDF, WhatsApp)',
+    description: 'Send farm warehouse stock to Floor 2 WIP or Kitwe (driver, signature, A4 PDF, WhatsApp)',
   },
   {
     id: 'delivery_sent_list',
@@ -913,20 +916,20 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
     'delivery_send_kitwe',
     'warehouse_delivery_app',
   );
-  const kitweScreenAllowed = kitweDeliveryAllowed || deliverySendAllowed;
-
-  merged.warehouse_production_kitwe = kitweDeliveryAllowed ? 'allow' : 'deny';
-  merged.screens.kitwe_send_delivery = buildMobileScreenAccessRow(kitweScreenAllowed);
-
-  if (deliverySendAllowed) {
-    merged.warehouse_delivery_app = 'allow';
-  }
-
   const farmAllowed = isWorkshopOrDeliveryScreenAllowed(
     merged,
     'delivery_farm',
     'warehouse_delivery_app',
   );
+  const kitweScreenAllowed = kitweDeliveryAllowed || deliverySendAllowed;
+
+  merged.warehouse_production_kitwe = kitweDeliveryAllowed ? 'allow' : 'deny';
+  merged.screens.kitwe_send_delivery = buildMobileScreenAccessRow(kitweScreenAllowed);
+
+  if (deliverySendAllowed || farmAllowed) {
+    merged.warehouse_delivery_app = 'allow';
+  }
+
   const farmRow = buildMobileScreenAccessRow(farmAllowed);
   merged.screens.delivery_farm = farmRow;
   merged.screens.delivery_send_farm = farmRow;

@@ -69,6 +69,8 @@ const emptyProductForm = {
   set_components: [],
   units_per_carton: '1',
   accessory_subcategory_ids: [],
+  floor2_wip_qty: '',
+  floor1_qty: '',
 };
 
 export default function WarehouseProductEditPage() {
@@ -592,9 +594,14 @@ export default function WarehouseProductEditPage() {
         qty_per_unit: row.qty_per_unit,
       }));
       const packetBoxPrompt = finishedBoxReceivingPrompt(assemblyLike, boxPackets);
+      const floor2QtyCaptured = isNew
+        && createPortal === 'warehouse-floor-2'
+        && !savingSet
+        && String(productPayload.floor2_wip_qty ?? '').trim() !== '';
       const showBoxModal = !savingSet
         && warehouseLocationId
         && assemblyId
+        && !floor2QtyCaptured
         && shouldPromptWarehouseBoxQtyOnProductSave(assemblyLike);
       if (showBoxModal) {
         const unitsPerBox = assemblyUnitsPerCarton(assemblyLike);
@@ -890,6 +897,24 @@ export default function WarehouseProductEditPage() {
               </div>
             ) : null}
           </div>
+          {isNew && createPortal === 'warehouse-floor-2' && !isSetForm ? (
+            <div className="warehouse-field">
+              <label htmlFor="wh-floor2-wip-qty">Floor 2 quantity</label>
+              <input
+                id="wh-floor2-wip-qty"
+                type="number"
+                min="0"
+                step="1"
+                required
+                placeholder="On-hand WIP units"
+                value={productForm.floor2_wip_qty}
+                onChange={(e) => setProductForm((f) => ({ ...f, floor2_wip_qty: e.target.value }))}
+              />
+              <p className="warehouse-field-hint">
+                Saved as this product&apos;s Floor 2 WIP stock. Floor 1 stays 0 unless you add it later.
+              </p>
+            </div>
+          ) : null}
           <div className="warehouse-field">
             <label htmlFor="wh-product-category">Category</label>
             <select

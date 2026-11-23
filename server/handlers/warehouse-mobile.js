@@ -1329,17 +1329,21 @@ async function opFarmDeliverySubmit(body, user) {
   return submitFarmDeliverySimple(getService(), body, user);
 }
 
-async function opFarmReturnCatalog(user) {
+async function opFarmReturnCatalog(user, body) {
   await assertFarmReturnAccess(user);
   const { farmReturnCatalog } = await import('../lib/farmWarehouseDelivery.js');
-  return farmReturnCatalog(getService());
+  return farmReturnCatalog(getService(), {
+    farmLocationId: body?.farm_location_id || body?.farmLocationId,
+  });
 }
 
 async function opFarmReturnSessionOpen(user, body) {
   await assertFarmReturnAccess(user);
   const email = String(user?.email || '').trim().toLowerCase();
   const { openFarmReturnSession } = await import('../lib/farmWarehouseDelivery.js');
-  return openFarmReturnSession(getService(), user, email);
+  return openFarmReturnSession(getService(), user, email, {
+    farmLocationId: body?.farm_location_id || body?.farmLocationId,
+  });
 }
 
 async function opFarmReturnSubmit(body, user) {
@@ -5588,7 +5592,7 @@ export default async function handler(req, res) {
         result = await opFarmDeliverySubmit(body, user);
         break;
       case 'farm-return-catalog':
-        result = await opFarmReturnCatalog(user);
+        result = await opFarmReturnCatalog(user, body);
         break;
       case 'farm-return-session-open':
         result = await opFarmReturnSessionOpen(user, body);

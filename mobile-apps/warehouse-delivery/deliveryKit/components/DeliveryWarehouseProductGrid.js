@@ -22,9 +22,7 @@ export function DeliveryWarehouseGridCard({
   const qtyText = typeof getQtyLabel === 'function'
     ? getQtyLabel(item)
     : '';
-  const sku = typeof getSku === 'function'
-    ? String(getSku(item) || '').trim()
-    : String(item?.family_sku || item?.sku || '').trim();
+  const sku = typeof getSku === 'function' ? getSku(item) : '';
 
   return (
     <Pressable
@@ -32,7 +30,6 @@ export function DeliveryWarehouseGridCard({
         if (disabled) return;
         if (typeof onSelect === 'function') onSelect(item);
       }}
-      disabled={disabled}
       style={({ pressed }) => [
         styles.card,
         selected && styles.cardSelected,
@@ -69,7 +66,7 @@ const styles = StyleSheet.create({
     borderColor: theme.border,
     overflow: 'hidden',
   },
-  cardSelected: { borderColor: theme.primary, borderWidth: 2 },
+  cardSelected: { borderColor: '#047857', borderWidth: 2 },
   cardDisabled: { opacity: 0.45 },
   cardPressed: { opacity: 0.92 },
   photoWrap: {
@@ -93,12 +90,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
-    backgroundColor: 'rgba(15, 23, 42, 0.82)',
+    backgroundColor: 'rgba(4, 120, 87, 0.92)',
   },
   qtyText: { color: '#ffffff', fontSize: 11, fontWeight: '800', textAlign: 'center' },
   name: {
     paddingHorizontal: 10,
-    paddingVertical: 10,
+    paddingTop: 8,
     fontSize: 14,
     fontWeight: '800',
     color: theme.text,
@@ -107,12 +104,12 @@ const styles = StyleSheet.create({
   sku: {
     paddingHorizontal: 10,
     paddingBottom: 10,
-    marginTop: -6,
-    fontSize: 12,
+    paddingTop: 2,
+    fontSize: 11,
     fontWeight: '600',
-    color: theme.textMuted,
+    color: '#047857',
   },
-  row: { gap: 8, marginBottom: 8, alignItems: 'flex-start' },
+  row: { gap: 10, marginBottom: 10, alignItems: 'flex-start' },
 });
 
 export default function DeliveryWarehouseProductGrid({
@@ -123,15 +120,15 @@ export default function DeliveryWarehouseProductGrid({
   getQtyLabel,
   getSku,
   isItemDisabled,
+  extraData,
   ListHeaderComponent,
   ListFooterComponent,
   contentContainerStyle,
-  extraData,
 }) {
   const renderItem = useCallback(({ item }) => {
     const key = deliveryWarehouseGridKey(item);
     const selected = selectedId && key === String(selectedId);
-    const disabled = typeof isItemDisabled === 'function' ? Boolean(isItemDisabled(item)) : false;
+    const disabled = typeof isItemDisabled === 'function' ? isItemDisabled(item) : false;
     return (
       <DeliveryWarehouseGridCard
         item={item}
@@ -156,7 +153,7 @@ export default function DeliveryWarehouseProductGrid({
       ListHeaderComponent={ListHeaderComponent}
       ListFooterComponent={ListFooterComponent}
       contentContainerStyle={contentContainerStyle}
-      extraData={{ selectedId, extraData }}
+      extraData={extraData ?? selectedId}
     />
   );
 }

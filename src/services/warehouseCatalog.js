@@ -737,6 +737,16 @@ export async function saveWarehouseAssembly(payload, { id, excludePacketId } = {
     try {
       const { addFloor2ProductToFloor1Local, saveCarpentryProductSelection } = await import('../utils/carpentryCatalogMutations');
       await saveCarpentryProductSelection(db, assemblyId, true);
+      const floor2Qty = Math.max(
+        0,
+        Math.floor(Number(payload?.floor2_wip_qty ?? payload?.floor2_product_qty) || 0),
+      );
+      const { data: locRows } = await db.from('locations').select('id, name');
+      const floor2LocationId = resolveWarehouseFloor2Location(locRows || [])?.id
+        || warehouseLocationId;
+      if (floor2LocationId) {
+        await setWarehouseAssemblyQuantity(assemblyId, floor2LocationId, floor2Qty);
+      }
       const floor1Qty = Math.max(
         0,
         Math.floor(Number(payload?.floor1_qty ?? payload?.floor1_product_qty) || 0),
@@ -748,7 +758,7 @@ export async function saveWarehouseAssembly(payload, { id, excludePacketId } = {
         ensureInventoryRow: true,
       });
     } catch (floor1Err) {
-      console.warn('[saveWarehouseAssembly] Floor 1 catalog mirror failed:', floor1Err?.message || floor1Err);
+      console.warn('[saveWarehouseAssembly] Floor 2 qty / Floor 1 catalog mirror failed:', floor1Err?.message || floor1Err);
     }
   }
 

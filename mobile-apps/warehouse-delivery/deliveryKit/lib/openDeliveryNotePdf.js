@@ -13,7 +13,6 @@ import { resolveDeliveryDriverSignatureDataUri, coerceInlineSignatureForPrint } 
 export async function openDeliveryNotePdf({
   deliveryNumber,
   driverName,
-  driverPhone = '',
   dispatchedBy,
   driverSignatureSrc,
   driverSignatureDataUri,
@@ -21,11 +20,6 @@ export async function openDeliveryNotePdf({
   submittedAt,
   printGroups,
   copies = 1,
-  documentKind = 'delivery',
-  customerName = '',
-  customerPhone = '',
-  forceShare = false,
-  partialDelivery = false,
 }) {
   const companyLogoSrc = await getDeliveryNoteCompanyLogoDataUri().catch(() => '');
   const signatureSrc = await resolveDeliveryDriverSignatureDataUri({
@@ -35,17 +29,12 @@ export async function openDeliveryNotePdf({
   const html = buildDeliveryNotePrintHtml({
     deliveryNumber,
     driverName,
-    driverPhone,
     dispatchedBy,
     driverSignatureSrc: signatureSrc,
     companyLogoSrc,
     submittedAt: submittedAt || new Date().toISOString(),
     printGroups,
     copies: Math.max(1, Math.min(10, Number(copies) || 1)),
-    documentKind,
-    customerName,
-    customerPhone,
-    partialDelivery: Boolean(partialDelivery),
   });
   if (Platform.OS === 'web') {
     openDeliveryNoteHtmlInBrowser(html, deliveryNumber || 'Delivery note');
@@ -60,5 +49,5 @@ export async function openDeliveryNotePdf({
     throw new Error('Could not build delivery note PDF.');
   }
   const shareUri = await prepareShareableDeliveryNotePdfUri(file.uri, deliveryNumber);
-  await previewOrSharePdfFile(shareUri, deliveryNumber || 'Delivery note', { forceShare });
+  await previewOrSharePdfFile(shareUri, deliveryNumber || 'Delivery note');
 }

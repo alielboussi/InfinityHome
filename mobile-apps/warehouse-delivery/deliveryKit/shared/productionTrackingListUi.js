@@ -2,9 +2,15 @@
 
 export const PRODUCTION_TRACKING_DEPARTMENTS = Object.freeze([
   { value: 'all', label: 'All departments' },
-  { value: 'upholstery', label: 'Upholstery' },
   { value: 'carpentry', label: 'Carpentry' },
+  { value: 'upholstery', label: 'Upholstery' },
   { value: 'painting', label: 'Painting' },
+]);
+
+export const PRODUCTION_TRACKING_DEPARTMENT_ORDER = Object.freeze([
+  'carpentry',
+  'upholstery',
+  'painting',
 ]);
 
 export const PRODUCTION_TRACKING_KINDS = Object.freeze([
@@ -21,8 +27,16 @@ export const PRODUCTION_TRACKING_PROGRESS = Object.freeze([
   { value: 'completed', label: 'Completed only' },
 ]);
 
+/** Hide workshop-cancelled rows (not shown in mobile job queues). */
+export function isProductionTrackingRowHidden(row) {
+  const st = String(row?.timer_status || row?.status || '').trim().toLowerCase();
+  return st === 'cancelled';
+}
+
 export function isProductionTrackingJobCompleted(row) {
   if (!row) return false;
+  if (row.pending_floor1_credit || row.floor1_awaiting_hassan) return false;
+  if (isProductionTrackingRowHidden(row)) return true;
   if (row.completed_at) return true;
   const timer = String(row.timer_status || '').trim().toLowerCase();
   if (timer === 'completed') return true;
@@ -60,6 +74,7 @@ export function productionTrackingSearchHaystack(row) {
     row?.quote_number,
     row?.return_number,
     row?.customer_name,
+    row?.customer_phone,
   ].filter(Boolean).join(' ').toLowerCase();
 }
 
@@ -96,6 +111,8 @@ export function factoryTrackingCollapseKey(row) {
   const qid = String(row?.quote_id || '').trim();
   if (qid) return `${dept}|quote|${qid}`;
   const asm = String(row?.assembly_id || '').trim();
+  // Painting: multiple Floor 2 sends for the same SKU are separate timed jobs.
+  if (dept === 'painting' && asm) return `${dept}|job|${row.id}`;
   if (asm) return `${dept}|asm|${asm}`;
   return `${dept}|job|${row.id}`;
 }
@@ -143,8 +160,8 @@ function mergeFactoryTrackingGroup(rows) {
 }
 
 /**
- * Collapse duplicate factory rows (same product / quote line) and drop quote-order cards
- * when a factory job already tracks that quote (e.g. painting queue after carpentry).
+ * Collapse duplicate factory rows (same product / quote line). Keep quote-order cards
+ * so carpentry / upholstery Orders still match the portal when painting also has the quote.
  */
 export function collapseProductionTrackingDisplayRows(rows) {
   const list = Array.isArray(rows) ? rows : [];
@@ -169,21 +186,7 @@ export function collapseProductionTrackingDisplayRows(rows) {
     if (merged) collapsedFactory.push(merged);
   }
 
-  const quoteIdsOnFactory = new Set();
-  for (const row of collapsedFactory) {
-    const qid = String(row?.quote_id || '').trim();
-    if (qid) quoteIdsOnFactory.add(qid);
-  }
-
-  const filteredRest = nonFactory.filter((row) => {
-    const kind = String(row?.track_kind || '').trim().toLowerCase();
-    if (kind !== 'quote_order' && kind !== 'showroom_order') return true;
-    const qid = String(row?.quote_id || '').trim();
-    if (!qid) return true;
-    return !quoteIdsOnFactory.has(qid);
-  });
-
-  return sortProductionTrackingJobs([...filteredRest, ...collapsedFactory]);
+  return sortProductionTrackingJobs([...nonFactory, ...collapsedFactory]);
 }
 
 export function applyProductionTrackingFilters(rows, {
@@ -193,6 +196,7 @@ export function applyProductionTrackingFilters(rows, {
   progress = 'all',
 } = {}) {
   let list = Array.isArray(rows) ? rows : [];
+  list = list.filter((row) => !isProductionTrackingRowHidden(row));
   list = list.filter((row) => rowMatchesProductionDepartment(row, department));
   list = list.filter((row) => rowMatchesProductionTrackKind(row, trackKind));
   const q = String(search || '').trim().toLowerCase();
@@ -206,6 +210,31 @@ export function applyProductionTrackingFilters(rows, {
     list = list.filter((row) => isProductionTrackingJobCompleted(row));
   }
   return collapseProductionTrackingDisplayRows(sortProductionTrackingJobs(list));
+}
+
+/** Group cards by workshop department (carpentry → upholstery → painting). */
+export function groupProductionTrackingJobsByDepartment(rows) {
+  const groups = new Map();
+  for (const row of rows || []) {
+    const key = String(row?.department || '').trim().toLowerCase() || 'other';
+    const bucket = groups.get(key) || [];
+    bucket.push(row);
+    groups.set(key, bucket);
+  }
+  const known = PRODUCTION_TRACKING_DEPARTMENT_ORDER.filter((key) => groups.has(key));
+  const extra = [...groups.keys()]
+    .filter((key) => !PRODUCTION_TRACKING_DEPARTMENT_ORDER.includes(key))
+    .sort();
+  return [...known, ...extra].map((key) => {
+    const meta = PRODUCTION_TRACKING_DEPARTMENTS.find((d) => d.value === key);
+    const label = meta?.label
+      || (key === 'other' ? 'Other' : (key.charAt(0).toUpperCase() + key.slice(1)));
+    return {
+      department: key,
+      label,
+      rows: sortProductionTrackingJobs(groups.get(key) || []),
+    };
+  });
 }
 
 /** In-progress rows first, then completed (each group sorted by started_at desc). */

@@ -90,20 +90,20 @@ export default function WarehouseFromFarmDoneScreen({ route, navigation }) {
           </Text>
         </View>
         <Pressable
-          style={[kiosk.btnOutlinePrimary, styles.shareAgain]}
+          style={styles.outlineBtn}
           onPress={sharePdf}
           disabled={sharing}
         >
-          <Text style={kiosk.btnOutlinePrimaryText}>
-            {sharing ? '…' : tUi('deliveryFarmWhatsAppShare', locale)}
+          <Text style={styles.outlineBtnText}>
+            {sharing ? '…' : tUi('deliveryFarmOpenPdf', locale)}
           </Text>
         </Pressable>
         <Pressable
-          style={[kiosk.btnPrimaryBlock, styles.btn, !whatsappSent && styles.btnDisabled]}
+          style={[styles.doneBtn, styles.btn, !whatsappSent && styles.btnDisabled]}
           onPress={() => navigation.popToTop()}
           disabled={!whatsappSent}
         >
-          <Text style={kiosk.btnPrimaryBlockText}>{tUi('deliveryBackDashboard', locale)}</Text>
+          <Text style={styles.doneBtnText}>{tUi('deliveryFarmDone', locale)}</Text>
         </Pressable>
       </View>
     </KioskSafeScroll>
@@ -120,10 +120,28 @@ const styles = StyleSheet.create({
   ref: {
     fontSize: 20,
     fontWeight: '800',
-    color: theme.primary,
+    color: '#047857',
     marginVertical: 12,
   },
-  shareAgain: { marginTop: 16 },
+  outlineBtn: {
+    marginTop: 16,
+    minHeight: 48,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#047857',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+  },
+  outlineBtnText: { color: '#047857', fontSize: 16, fontWeight: '800' },
+  doneBtn: {
+    minHeight: 52,
+    borderRadius: 12,
+    backgroundColor: '#047857',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  doneBtnText: { color: '#fff', fontSize: 17, fontWeight: '800' },
   btn: { marginTop: 12 },
   btnDisabled: { opacity: 0.45 },
 });

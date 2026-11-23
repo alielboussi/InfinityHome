@@ -1,4 +1,9 @@
 import { enrichProductionLineWithProgress } from './quoteProductionLineProgress.js';
+import {
+  accessoryPicksToAccessoriesList,
+  normalizeAccessoryPicks,
+  normalizeAccessorySubcategoryFields,
+} from './warehouseAccessoryCatalog.js';
 
 function trimOrNull(v) {
   const s = String(v ?? '').trim();
@@ -427,9 +432,15 @@ export function pickQuoteItemProductionFields(it) {
   }));
   const primary = dimension_sets[0] || { dim_l_cm, dim_w_cm, dim_h_cm };
   const dimensions_lwh = formatQuoteDimensionsCm(primary) || formatQuoteDimensionsCm({ dim_l_cm, dim_w_cm, dim_h_cm });
+  const accessory_picks = normalizeAccessoryPicks(
+    it?.accessory_picks ?? meta.accessory_picks,
+  );
   const accessories = normalizeQuoteItemAccessories(
     it?.accessories ?? it?.included_accessories ?? meta.accessories ?? meta.included_accessories,
   );
+  const accessoriesMerged = accessory_picks.length
+    ? [...new Set([...accessoryPicksToAccessoriesList(accessory_picks), ...accessories])]
+    : accessories;
   return {
     leather_code: trimOrNull(it?.leather_code ?? meta.leather_code),
     dim_l_cm: primary.dim_l_cm || dim_l_cm,
@@ -443,7 +454,11 @@ export function pickQuoteItemProductionFields(it) {
     aluminum_thickness_mm: normalizeAluminumThicknessMm(
       it?.aluminum_thickness_mm ?? meta.aluminum_thickness_mm,
     ),
-    accessories,
+    accessories: accessoriesMerged,
+    accessory_picks,
+    accessory_subcategory_fields: normalizeAccessorySubcategoryFields(
+      it?.accessory_subcategory_fields ?? meta.accessory_subcategory_fields,
+    ),
     floor2_assembly_id: trimOrNull(meta.floor2_assembly_id ?? it?.floor2_assembly_id),
     floor2_wip_line: meta.floor2_wip_line === true || it?.floor2_wip_line === true,
   };
@@ -472,6 +487,10 @@ export function buildQuoteItemMetadataFromPayload(it) {
   if (fields.foam_type) out.foam_type = fields.foam_type;
   if (fields.aluminum_thickness_mm) out.aluminum_thickness_mm = fields.aluminum_thickness_mm;
   if (fields.accessories?.length) out.accessories = fields.accessories;
+  if (fields.accessory_picks?.length) out.accessory_picks = fields.accessory_picks;
+  if (fields.accessory_subcategory_fields?.length) {
+    out.accessory_subcategory_fields = fields.accessory_subcategory_fields;
+  }
   const lineImage = trimOrNull(it?.line_image_url ?? it?.lineImageUrl ?? meta.line_image_url);
   if (lineImage) out.line_image_url = lineImage;
   const floor2Aid = trimOrNull(meta.floor2_assembly_id ?? it?.floor2_assembly_id);
@@ -510,6 +529,12 @@ export function formatQuoteItemProductionPdfLines(it) {
   }
   if (fields.foam_type) {
     lines.push(`-Foam Type: ${fields.foam_type}`);
+  }
+  if (fields.accessory_picks?.length) {
+    fields.accessory_picks.forEach((pick) => {
+      const sub = pick.subcategory_name || 'Accessory';
+      lines.push(`-${pick.slot}. ${sub}: ${pick.name}`);
+    });
   }
   if (fields.aluminum_thickness_mm) {
     lines.push(`-Aluminum Thickness: ${fields.aluminum_thickness_mm}`);

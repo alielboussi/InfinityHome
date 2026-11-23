@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DeliveryFarmQtyAddModal from '../components/DeliveryFarmQtyAddModal';
 import DeliveryWarehouseProductGrid from '../components/DeliveryWarehouseProductGrid';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
@@ -18,6 +19,14 @@ import { tUi } from '../lib/productionKioskI18n';
 import { mapFarmWarehouseSetupError, warehouseMobileRequest } from '../shared/warehouseMobileApi';
 import { resolveProductImageUrl } from '../shared/lusakaStock/formatPrice';
 import { theme } from '../shared/theme';
+import { kioskFooterBottomPad } from '../lib/kioskLayout';
+
+const FARM = {
+  bar: '#047857',
+  chip: '#064e3b',
+  chipText: '#6ee7b7',
+  border: '#047857',
+};
 
 function normalizeScan(value) {
   return String(value || '')
@@ -36,7 +45,8 @@ function matchProductByScan(products, raw) {
   }) || null;
 }
 
-export default function WarehouseFromFarmHomeScreen({ navigation }) {
+export default function WarehouseFromFarmHomeScreen({ navigation, route }) {
+  const insets = useSafeAreaInsets();
   const { locale, toggleLocale, textAlign } = useProductionKioskLocale();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -49,50 +59,56 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
   const [scanOpen, setScanOpen] = useState(false);
   const [scanQtyProduct, setScanQtyProduct] = useState(null);
   const [creditDestination, setCreditDestination] = useState('');
+  const [farmLocations, setFarmLocations] = useState([]);
+  const [farmLocationId, setFarmLocationId] = useState('');
+  const [farmLocationName, setFarmLocationName] = useState('');
   const productsRef = useRef(products);
   productsRef.current = products;
 
-  const openSession = useCallback(async () => {
-    setSessionOpening(true);
+  const loadFarm = useCallback(async (requestedFarmId = '') => {
+    setLoading(true);
+    setError('');
     try {
-      const res = await warehouseMobileRequest('farm-return-session-open', {});
-      setSessionId(String(res?.session_id || ''));
-      setTransferRef(String(res?.transfer_ref || ''));
+      const catalog = await warehouseMobileRequest('farm-return-catalog', {
+        farm_location_id: requestedFarmId || undefined,
+      });
+      const locs = Array.isArray(catalog?.farm_locations) ? catalog.farm_locations : [];
+      const selectedId = String(catalog?.farm_location_id || requestedFarmId || locs[0]?.id || '');
+      const selectedName = String(
+        catalog?.farm_location_name
+        || locs.find((l) => String(l.id) === selectedId)?.name
+        || '',
+      ).trim();
+      setFarmLocations(locs);
+      setFarmLocationId(selectedId);
+      setFarmLocationName(selectedName);
+      setProducts(Array.isArray(catalog?.products) ? catalog.products : []);
+      setCart([]);
+      setSessionOpening(true);
+      try {
+        const res = await warehouseMobileRequest('farm-return-session-open', {
+          farm_location_id: selectedId || undefined,
+        });
+        setSessionId(String(res?.session_id || ''));
+        setTransferRef(String(res?.transfer_ref || ''));
+      } finally {
+        setSessionOpening(false);
+      }
     } catch (e) {
       setError(mapFarmWarehouseSetupError(
-        e?.message || tUi('deliveryFarmSessionFailed', locale),
+        e?.message || tUi('deliveryFarmCatalogFailed', locale),
         locale,
         tUi,
       ));
+      setProducts([]);
     } finally {
-      setSessionOpening(false);
+      setLoading(false);
     }
   }, [locale]);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setError('');
-      try {
-        const catalog = await warehouseMobileRequest('farm-return-catalog', {});
-        await openSession();
-        if (cancelled) return;
-        setProducts(Array.isArray(catalog?.products) ? catalog.products : []);
-      } catch (e) {
-        if (!cancelled) {
-          setError(mapFarmWarehouseSetupError(
-            e?.message || tUi('deliveryFarmCatalogFailed', locale),
-            locale,
-            tUi,
-          ));
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [openSession, locale]);
+    void loadFarm('');
+  }, [loadFarm]);
 
   const cartQtyById = useMemo(() => {
     const map = {};
@@ -251,6 +267,8 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
       lines,
       shareGroups,
       creditDestination,
+      farmLocationId,
+      farmLocationName,
     });
   };
 
@@ -293,20 +311,46 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
         locale={locale}
         onToggleLocale={toggleLocale}
       />
-      <Pressable onPress={() => navigation.goBack()} style={kiosk.backRow}>
-        <Text style={kiosk.backText}>{tUi('back', locale)}</Text>
-      </Pressable>
+      {route?.params?.hideBack ? null : (
+        <Pressable onPress={() => navigation.goBack()} style={kiosk.backRow}>
+          <Text style={kiosk.backText}>{tUi('back', locale)}</Text>
+        </Pressable>
+      )}
       {error ? <Text style={[kiosk.noticeErr, { textAlign }]}>{error}</Text> : null}
-      <View style={kiosk.card}>
+      <View style={styles.heroCard}>
         {sessionOpening ? (
-          <Text style={[kiosk.metaLine, { textAlign }]}>{tUi('deliveryFarmOpeningSession', locale)}</Text>
+          <Text style={[styles.meta, { textAlign }]}>{tUi('deliveryFarmOpeningSession', locale)}</Text>
         ) : (
-          <Text style={[kiosk.heroNumber, { textAlign }]}>{transferRef || '—'}</Text>
+          <Text style={[styles.transferRef, { textAlign }]}>{transferRef || '—'}</Text>
         )}
-        <Text style={[kiosk.metaLine, { textAlign }]}>
-          {tUi('deliveryFarmFromFixed', locale)}
+        <Text style={[styles.meta, { textAlign }]}>
+          {tUi('deliveryFarmFromFixed', locale).replace(
+            '{name}',
+            farmLocationName || tUi('deliveryFarmSourceTitle', locale),
+          )}
         </Text>
-        <Text style={[kiosk.label, { textAlign, marginTop: 12 }]}>
+        {farmLocations.length > 1 ? (
+          <View style={styles.destRow}>
+            {farmLocations.map((loc) => {
+              const on = String(loc.id) === String(farmLocationId);
+              return (
+                <Pressable
+                  key={loc.id}
+                  style={[styles.destChip, on ? styles.destChipOn : null]}
+                  onPress={() => {
+                    if (on) return;
+                    void loadFarm(String(loc.id));
+                  }}
+                >
+                  <Text style={[styles.destChipText, on ? styles.destChipTextOn : null]}>
+                    {loc.name || tUi('deliveryFarmSourceTitle', locale)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
+        <Text style={[styles.destLabel, { textAlign }]}>
           {tUi('deliveryFarmDestTitle', locale)}
         </Text>
         <View style={styles.destRow}>
@@ -354,11 +398,11 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
           autoCorrect={false}
         />
         <Pressable
-          style={kiosk.btnIcon}
+          style={styles.scanBtn}
           onPress={() => setScanOpen(true)}
           accessibilityLabel={tUi('deliveryFarmScanA11y', locale)}
         >
-          <MaterialCommunityIcons name="barcode-scan" size={26} color={theme.primary} />
+          <MaterialCommunityIcons name="barcode-scan" size={26} color="#fff" />
         </Pressable>
       </View>
 
@@ -372,10 +416,15 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
   ), [
     creditDestination,
     error,
+    farmLocationId,
+    farmLocationName,
+    farmLocations,
     gridProducts.length,
     loading,
+    loadFarm,
     locale,
     navigation,
+    route?.params?.hideBack,
     search,
     sessionOpening,
     textAlign,
@@ -385,7 +434,7 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
 
   const listFooter = useMemo(() => (
     <>
-      <Text style={[kiosk.sectionTitle, { textAlign }]}>
+      <Text style={[styles.sectionTitle, { textAlign }]}>
         {tUi('deliveryFarmCartTitle', locale).replace('{n}', String(cartTotal))}
       </Text>
       {!cart.length ? (
@@ -413,14 +462,14 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
               onPress={() => setCart((prev) => prev.filter((r) => r.assembly_id !== line.assembly_id))}
               hitSlop={8}
             >
-              <Text style={kiosk.cartRemoveText}>{tUi('deliveryFarmRemove', locale)}</Text>
+              <Text style={styles.removeText}>{tUi('deliveryFarmRemove', locale)}</Text>
             </Pressable>
           </View>
         </View>
       ))}
       {cart.length > 0 ? (
-        <Pressable style={[kiosk.btnPrimaryBlock, { marginTop: 4 }]} onPress={goSignature}>
-          <Text style={kiosk.btnPrimaryBlockText}>{tUi('deliverySignatureTitle', locale)}</Text>
+        <Pressable style={styles.continueBtn} onPress={goSignature}>
+          <Text style={styles.continueBtnText}>{tUi('deliveryFarmContinue', locale)}</Text>
         </Pressable>
       ) : null}
     </>
@@ -434,7 +483,7 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
   ]);
 
   return (
-    <>
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <DeliveryWarehouseProductGrid
         items={gridProducts}
         selectedId=""
@@ -446,7 +495,13 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
         extraData={cartQtyById}
         ListHeaderComponent={listHeader}
         ListFooterComponent={listFooter}
-        contentContainerStyle={styles.wrap}
+        contentContainerStyle={[
+          styles.wrap,
+          {
+            paddingTop: insets.top + 8,
+            paddingBottom: kioskFooterBottomPad(insets) + 24,
+          },
+        ]}
       />
 
       <ProductionQrScanModal
@@ -467,27 +522,56 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
         onClose={() => setScanQtyProduct(null)}
         onConfirm={onScanQtyConfirm}
       />
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { flexGrow: 1 },
-  destRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  wrap: { flexGrow: 1, paddingHorizontal: 16 },
+  heroCard: {
+    backgroundColor: theme.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: FARM.border,
+    padding: 16,
+    marginBottom: 12,
+  },
+  transferRef: { fontSize: 22, fontWeight: '800', color: theme.text, marginBottom: 4 },
+  meta: { fontSize: 14, fontWeight: '600', color: theme.textSecondary, marginBottom: 4 },
+  destLabel: { fontSize: 13, fontWeight: '800', color: theme.text, marginTop: 12, marginBottom: 4 },
+  destRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
   destChip: {
     flex: 1,
-    minWidth: 140,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 10,
+    minHeight: 48,
+    borderWidth: 1.5,
+    borderColor: FARM.bar,
+    borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 10,
-    backgroundColor: '#fff',
+    backgroundColor: FARM.chip,
+    justifyContent: 'center',
   },
-  destChipOn: { backgroundColor: '#1e3a5f', borderColor: '#1e3a5f' },
-  destChipText: { textAlign: 'center', fontWeight: '700', color: '#334155', fontSize: 13 },
+  destChipOn: { backgroundColor: FARM.bar, borderColor: FARM.bar },
+  destChipText: { textAlign: 'center', fontWeight: '800', color: FARM.chipText, fontSize: 15 },
   destChipTextOn: { color: '#fff' },
   searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  rowSelected: { borderColor: theme.primary, borderWidth: 1 },
-  cartRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 8 },
+  scanBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: FARM.bar,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sectionTitle: { fontSize: 16, fontWeight: '800', color: theme.text, marginTop: 12, marginBottom: 8 },
+  removeText: { color: '#b91c1c', fontWeight: '800', fontSize: 14 },
+  continueBtn: {
+    marginTop: 12,
+    minHeight: 52,
+    borderRadius: 12,
+    backgroundColor: FARM.bar,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  continueBtnText: { color: '#fff', fontSize: 17, fontWeight: '800' },
 });

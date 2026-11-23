@@ -351,6 +351,8 @@ export async function finishUpholsteryProductionJob(sb, {
   const job = await loadJob(sb, jobId);
   if (!ACTIVE_STATUSES.has(normalizeJobStatus(job.status))) throw new Error('Job is not active');
   const qty = Math.max(1, Math.floor(Number(job.product_qty) || 1));
+  const { lookupQuoteIdForAssembly } = await import('./warehouseDeliveryAdminQueue.js');
+  let linkedQuoteId = String(job.metadata?.quote_id || job.metadata?.carpentry_quote_id || job.quote_id || '').trim();
 
   const ctx = await loadUpholsteryManufactureContext(sb, job.raw_assembly_id);
   const meta = job.metadata || {};
@@ -383,6 +385,13 @@ export async function finishUpholsteryProductionJob(sb, {
 
   const output = await resolveFinishedOutputAssemblyOnly(sb, ctx);
   output.qty_after = qty;
+  if (!linkedQuoteId) {
+    linkedQuoteId = await lookupQuoteIdForAssembly(sb, output.output_assembly_id || job.raw_assembly_id || job.assembly_id, {
+      department: 'upholstery',
+      assemblyName: output.name || job.product_name,
+      quantity: qty,
+    }) || '';
+  }
   const materialUsageRows = Array.isArray(meta.material_usage_rows) ? meta.material_usage_rows : [];
   const storeroomIds = Array.isArray(meta.storeroom_location_ids) ? meta.storeroom_location_ids : [];
 
@@ -392,7 +401,7 @@ export async function finishUpholsteryProductionJob(sb, {
   const { error: runErr } = await sb.from(RUNS).insert({
     id: runId,
     source: 'upholstery_floor',
-    quote_id: null,
+    quote_id: linkedQuoteId || null,
     assembly_id: output.output_assembly_id,
     product_qty: qty,
     started_at: job.started_at || now,
@@ -492,6 +501,7 @@ export async function finishUpholsteryProductionJob(sb, {
     timer_started_at: null,
     metadata: stripUndefinedDeep({
       ...meta,
+      ...(linkedQuoteId ? { quote_id: linkedQuoteId, carpentry_quote_id: linkedQuoteId } : {}),
       production_run_id: runErr ? null : runId,
       label_job_id: labelJobId ?? null,
       label_print_warning: labelPrintWarning ?? null,
@@ -513,6 +523,7 @@ export async function finishUpholsteryProductionJob(sb, {
       assemblyName: output.name,
       qty,
       department: 'upholstery',
+      quoteId: linkedQuoteId || null,
     });
     deliveryQueued = true;
   }

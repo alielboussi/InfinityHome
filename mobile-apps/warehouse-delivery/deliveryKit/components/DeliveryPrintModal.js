@@ -45,7 +45,6 @@ export default function DeliveryPrintModal({
   documentKind = 'delivery',
   customerName = '',
   customerPhone = '',
-  partialDelivery = false,
   onDone,
 }) {
   const [printers, setPrinters] = useState([]);
@@ -93,13 +92,11 @@ export default function DeliveryPrintModal({
       documentKind,
       customerName,
       customerPhone,
-      partialDelivery: Boolean(partialDelivery),
     });
   }, [
     copyCount,
     customerName,
     customerPhone,
-    partialDelivery,
     deliveryNumber,
     dispatchedBy,
     documentKind,
@@ -188,7 +185,6 @@ export default function DeliveryPrintModal({
           documentKind,
           customerName,
           customerPhone,
-          partialDelivery: Boolean(partialDelivery),
         });
       }
     } catch (err) {
@@ -216,7 +212,6 @@ export default function DeliveryPrintModal({
     locale,
     printGroups,
     submittedAt,
-    partialDelivery,
   ]);
 
   useEffect(() => {

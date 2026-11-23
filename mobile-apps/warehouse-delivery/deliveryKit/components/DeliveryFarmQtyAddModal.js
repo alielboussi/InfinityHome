@@ -57,11 +57,11 @@ export default function DeliveryFarmQtyAddModal({
           <Text style={[kiosk.metaLine, { textAlign }]}>
             {tUi('deliveryFarmQtyMax', locale).replace('{n}', String(Math.max(0, Math.floor(Number(maxQty) || 0))))}
           </Text>
-          <Pressable style={[kiosk.btnPrimaryBlock, styles.confirmBtn]} onPress={handleConfirm}>
-            <Text style={kiosk.btnPrimaryBlockText}>{tUi('deliveryFarmAddToCart', locale)}</Text>
+          <Pressable style={styles.confirmBtn} onPress={handleConfirm}>
+            <Text style={styles.confirmBtnText}>{tUi('deliveryFarmAddToCart', locale)}</Text>
           </Pressable>
-          <Pressable style={[kiosk.btnOutlinePrimary, styles.closeBtn]} onPress={onClose}>
-            <Text style={kiosk.btnOutlinePrimaryText}>{tUi('presetPickerClose', locale)}</Text>
+          <Pressable style={styles.closeBtn} onPress={onClose}>
+            <Text style={styles.closeBtnText}>{tUi('cancel', locale)}</Text>
           </Pressable>
         </View>
       </View>
@@ -86,6 +86,23 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: '800', color: theme.text },
   product: { color: theme.text, marginTop: 10, fontWeight: '700', fontSize: 16 },
   sku: { color: theme.muted, marginTop: 4, fontSize: 13 },
-  confirmBtn: { marginTop: 14 },
-  closeBtn: { marginTop: 10 },
+  confirmBtn: {
+    marginTop: 14,
+    minHeight: 48,
+    borderRadius: 12,
+    backgroundColor: '#047857',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  closeBtn: {
+    marginTop: 10,
+    minHeight: 44,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#047857',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeBtnText: { color: '#047857', fontSize: 15, fontWeight: '800' },
 });
