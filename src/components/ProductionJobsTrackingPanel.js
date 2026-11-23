@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { FaPause, FaPlay } from 'react-icons/fa';
 import { fetchProductionJobsTracking, approveProductionFloor1Credit } from '../services/productionJobsTrackingApi';
 import { formatWarehouseAdminDateTime } from '../utils/warehouseAdminFormat';
 import { productionDepartmentLabel } from '../utils/productionJobFlowStatus';
@@ -90,10 +91,22 @@ function ProductionTrackingCard({ row, onApproveFloor1, approveBusyId }) {
           {row.department_label || productionDepartmentLabel(row.department)}
         </span>
         {row.timer_status === 'paused' ? (
-          <span className="production-tracking-card__timer-chip">Paused</span>
+          <span
+            className="production-tracking-card__timer-chip production-tracking-card__timer-chip--paused"
+            title="Paused"
+            aria-label="Paused"
+          >
+            <FaPause />
+          </span>
         ) : null}
         {row.timer_status === 'running' ? (
-          <span className="production-tracking-card__timer-chip">Running</span>
+          <span
+            className="production-tracking-card__timer-chip production-tracking-card__timer-chip--running"
+            title="Play"
+            aria-label="Running"
+          >
+            <FaPlay />
+          </span>
         ) : null}
       </div>
 
