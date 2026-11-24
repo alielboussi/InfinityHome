@@ -26,7 +26,11 @@ async function openStagedDelivery(navigation, row) {
     finished_driver_checked: true,
     finished_driver_checked_at: now,
   }];
-  const printNoteNumber = String(row.quote_number || row.production_job_id || '').trim();
+  const quoteLabel = String(row.quote_number || '').trim();
+  const looksLikeUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(quoteLabel);
+  const printNoteNumber = (!quoteLabel || looksLikeUuid)
+    ? String(session.delivery_number || '').trim()
+    : quoteLabel;
   const printGroups = printGroupsFromQuoteLines(quoteLines.length
     ? quoteLines
     : (String(row.assembly_name || '').trim() && String(row.assembly_name) !== String(row.assembly_id)

@@ -69,7 +69,14 @@ function emptyQuoteCustomer() {
 }
 
 function normalizeMatchName(value) {
-  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  return String(value || '')
+    .toLowerCase()
+    .replace(/night\s*stands?/g, 'nightstand')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\b(the|and|with|pcs?|pieces?)\b/g, ' ')
+    .replace(/s\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function quoteIdFromJobFields(job, meta = null) {
@@ -143,59 +150,86 @@ async function resolveQuoteOrderCustomer(sb, quoteId) {
   };
 }
 
-function routingStillOnDeliveryQueue(meta, completedAt) {
-  const admin = meta?.delivery_admin || {};
-  const stage = String(admin.stage || '').toLowerCase();
-  if (stage === DELIVERY_ADMIN_STAGE.AWAITING_DRIVER) return true;
-  if (stage && stage !== DELIVERY_ADMIN_STAGE.AWAITING_DRIVER) return false;
-  return !completedAt;
+function routingAlreadyLeftDriverQueue(meta) {
+  const stage = String(meta?.delivery_admin?.stage || '').toLowerCase();
+  return stage === DELIVERY_ADMIN_STAGE.COLLECTED_BY_DRIVER
+    || stage === DELIVERY_ADMIN_STAGE.DELIVERY_COMPLETED;
 }
 
 async function loadQuoteRoutingCandidates(sb) {
   let { data, error } = await sb
     .from(QUOTE_ROUTING)
     .select('quote_id, route, completed_at, sent_to_production_at, metadata')
-    .not('sent_to_production_at', 'is', null)
     .limit(800);
-  if (error) {
-    const fallback = await sb
-      .from(QUOTE_ROUTING)
-      .select('quote_id, route, completed_at, metadata')
-      .limit(800);
-    data = fallback.data;
-    error = fallback.error;
-  }
   if (error || !data?.length) return [];
-  return data.map((row) => {
+  const mapped = data.map((row) => {
     const meta = parseRowMetadata(row.metadata);
+    if (routingAlreadyLeftDriverQueue(meta)) return null;
+    if (!row.sent_to_production_at && !meta.quote_number && !row.completed_at) return null;
     const admin = meta.delivery_admin || {};
     const lines = quoteRoutingLineItems(meta);
+    const assembly_ids = assemblyIdsFromRoutingMeta(meta, admin);
+    const names = new Set(lines.map((line) => normalizeMatchName(line.name)).filter(Boolean));
     return {
       quote_id: String(row.quote_id || '').trim(),
       route: String(row.route || admin.department || '').toLowerCase(),
       awaiting: rowAwaitingDriver(admin),
-      on_queue: routingStillOnDeliveryQueue(meta, row.completed_at),
-      assembly_ids: assemblyIdsFromRoutingMeta(meta, admin),
-      names: new Set(lines.map((line) => normalizeMatchName(line.name)).filter(Boolean)),
+      assembly_ids,
+      names,
       quantity: quoteLinesTotalQty(lines, admin.quantity),
       quote_number: admin.quote_number || meta.quote_number || null,
       customer_name: String(meta.customer_name || '').trim() || null,
       customer_phone: String(meta.customer_phone || '').trim() || null,
       showroom_order: meta.showroom_order === true,
     };
-  }).filter((row) => row.quote_id && row.on_queue);
+  }).filter((row) => row?.quote_id);
+
+  const quoteIds = mapped.map((row) => row.quote_id);
+  if (quoteIds.length) {
+    const itemsRes = await sb
+      .from('quotation_items')
+      .select('quotation_id, name, name_override, quantity, metadata')
+      .in('quotation_id', quoteIds.slice(0, 400));
+    const items = itemsRes.error ? [] : (itemsRes.data || []);
+    const byQuote = new Map();
+    (items || []).forEach((item) => {
+      const qid = String(item.quotation_id || '').trim();
+      if (!qid) return;
+      if (!byQuote.has(qid)) byQuote.set(qid, []);
+      byQuote.get(qid).push(item);
+    });
+    for (const row of mapped) {
+      const extra = byQuote.get(row.quote_id) || [];
+      let qty = 0;
+      extra.forEach((item) => {
+        const name = normalizeMatchName(item.name_override || item.name);
+        if (name) row.names.add(name);
+        const meta = item.metadata && typeof item.metadata === 'object' ? item.metadata : {};
+        ['floor2_assembly_id', 'assembly_id', 'catalog_assembly_id', 'product_id'].forEach((key) => {
+          const id = String(meta[key] || '').trim();
+          if (id) row.assembly_ids.add(id);
+        });
+        qty += Math.max(1, Math.floor(Number(item.quantity) || 1));
+      });
+      if (!row.quantity && qty) row.quantity = qty;
+    }
+  }
+  return mapped;
 }
 
 function scoreQuoteCandidate(candidate, { assemblyId, assemblyName, department, quantity }) {
   let score = 0;
-  if (candidate.assembly_ids.has(assemblyId)) score += 12;
+  const aid = String(assemblyId || '').trim();
+  if (aid && candidate.assembly_ids.has(aid)) score += 12;
   const name = normalizeMatchName(assemblyName);
   if (name && candidate.names.has(name)) score += 8;
   else if (name && [...candidate.names].some((n) => n.includes(name) || name.includes(n))) score += 4;
   if (department && candidate.route && candidate.route === String(department).toLowerCase()) score += 3;
   if (candidate.awaiting) score += 4;
   if (quantity && candidate.quantity === quantity) score += 2;
-  if (score < 8) return 0;
+  if (aid && candidate.assembly_ids.has(aid)) return score;
+  if (name && candidate.names.has(name)) return score;
+  if (score < 6) return 0;
   return score;
 }
 
@@ -224,13 +258,42 @@ export async function lookupQuoteIdForAssembly(sb, assemblyId, {
   return best?.quote_id || null;
 }
 
+function applyQuoteCandidate(row, best) {
+  if (!best) return row;
+  return {
+    ...row,
+    quote_id: row.quote_id || best.quote_id,
+    quote_number: row.quote_number || best.quote_number || null,
+    customer_name: row.customer_name || best.customer_name || null,
+    customer_phone: row.customer_phone || best.customer_phone || null,
+    showroom_order: row.showroom_order === true || best.showroom_order === true,
+    customer_order: !(row.showroom_order === true || best.showroom_order === true)
+      && (row.customer_order === true || Boolean(best.customer_name || row.customer_name)),
+  };
+}
+
+async function loadQuotationItemNameIndex(sb) {
+  const { data, error } = await sb
+    .from('quotation_items')
+    .select('quotation_id, name, name_override, quantity, metadata')
+    .limit(2000);
+  if (error || !data?.length) return [];
+  return data.map((item) => ({
+    quote_id: String(item.quotation_id || '').trim(),
+    name: normalizeMatchName(item.name_override || item.name),
+    quantity: Math.max(1, Math.floor(Number(item.quantity) || 1)),
+    assembly_ids: ['floor2_assembly_id', 'assembly_id', 'catalog_assembly_id', 'product_id']
+      .map((key) => String(item.metadata?.[key] || '').trim())
+      .filter(Boolean),
+  })).filter((row) => row.quote_id);
+}
+
 async function attachMissingQuoteIds(sb, rows) {
   const list = Array.isArray(rows) ? rows : [];
   const missing = list.filter((row) => !String(row.quote_id || '').trim());
   if (!missing.length) return list;
   const candidates = await loadQuoteRoutingCandidates(sb);
-  if (!candidates.length) return list;
-  return list.map((row) => {
+  let withRouting = list.map((row) => {
     if (String(row.quote_id || '').trim()) return row;
     const aid = String(row.assembly_id || '').trim();
     let best = null;
@@ -247,17 +310,35 @@ async function attachMissingQuoteIds(sb, rows) {
         bestScore = score;
       }
     }
-    if (!best) return row;
-    return {
-      ...row,
-      quote_id: best.quote_id,
-      quote_number: row.quote_number || best.quote_number || null,
-      customer_name: row.customer_name || best.customer_name || null,
-      customer_phone: row.customer_phone || best.customer_phone || null,
-      showroom_order: row.showroom_order === true || best.showroom_order === true,
-      customer_order: !(row.showroom_order === true || best.showroom_order === true)
-        && (row.customer_order === true || Boolean(best.customer_name)),
-    };
+    return applyQuoteCandidate(row, best);
+  });
+
+  const stillMissing = withRouting.filter((row) => !String(row.quote_id || '').trim());
+  if (!stillMissing.length) return withRouting;
+  const itemIndex = await loadQuotationItemNameIndex(sb);
+  if (!itemIndex.length) return withRouting;
+  const quoteMeta = new Map((candidates || []).map((c) => [c.quote_id, c]));
+  return withRouting.map((row) => {
+    if (String(row.quote_id || '').trim()) return row;
+    const aid = String(row.assembly_id || '').trim();
+    const name = normalizeMatchName(row.assembly_name);
+    const qty = Math.max(0, Math.floor(Number(row.quantity) || 0));
+    let best = null;
+    let bestScore = 0;
+    for (const item of itemIndex) {
+      let score = 0;
+      if (aid && item.assembly_ids.includes(aid)) score += 12;
+      if (name && item.name === name) score += 8;
+      else if (name && item.name && (item.name.includes(name) || name.includes(item.name))) score += 4;
+      if (qty && item.quantity === qty) score += 2;
+      if (score < 8) continue;
+      if (score > bestScore) {
+        bestScore = score;
+        const known = quoteMeta.get(item.quote_id);
+        best = known || { quote_id: item.quote_id };
+      }
+    }
+    return applyQuoteCandidate(row, best);
   });
 }
 
@@ -273,9 +354,16 @@ export async function registerProductionJobAwaitingDriver(sb, {
   now = new Date().toISOString(),
 }) {
   const meta = jobRow?.metadata || {};
-  const resolvedQuoteId = String(
+  let resolvedQuoteId = String(
     quoteId || quoteIdFromJobFields(jobRow, meta) || '',
   ).trim() || null;
+  if (!resolvedQuoteId) {
+    resolvedQuoteId = await lookupQuoteIdForAssembly(sb, assemblyId, {
+      department,
+      assemblyName,
+      quantity: qty,
+    }) || null;
+  }
   const customerFields = resolvedQuoteId
     ? await resolveQuoteOrderCustomer(sb, resolvedQuoteId)
     : {
@@ -369,22 +457,35 @@ export async function registerQuoteOrderAwaitingDriver(sb, {
   const lines = quoteRoutingLineItems(prev);
   const assemblyName = quoteLinesDisplayName(lines, '');
   const quantity = quoteLinesTotalQty(lines, qty);
-  const resolvedQuoteNumber = quoteNumber || prev.quote_number || null;
+  const customerFields = await resolveQuoteOrderCustomer(sb, quoteId);
+  const resolvedQuoteNumber = quoteNumber
+    || prev.quote_number
+    || customerFields.quote_number
+    || null;
+  const customerName = String(prev.customer_name || customerFields.customer_name || '').trim() || null;
+  const customerPhone = String(prev.customer_phone || customerFields.customer_phone || '').trim() || null;
+  const showroomOrder = prev.showroom_order === true || customerFields.showroom_order === true;
   await sb.from(QUOTE_ROUTING).update({
     metadata: {
       ...prev,
+      quote_number: resolvedQuoteNumber || prev.quote_number || null,
+      ...(customerName ? { customer_name: customerName, customer_phone: customerPhone } : {}),
+      ...(showroomOrder ? { showroom_order: true, customer_order: false } : {}),
+      ...(!showroomOrder && customerName ? { customer_order: true } : {}),
       ...buildAdminPatch(DELIVERY_ADMIN_KIND.ORDER, DELIVERY_ADMIN_STAGE.AWAITING_DRIVER, {
         registered_at: now,
         quote_id: String(quoteId),
         quote_number: resolvedQuoteNumber,
-        assembly_id: String(assemblyId),
+        assembly_id: String(assemblyId || prev.primary_assembly_id || ''),
         assembly_name: assemblyName,
         quantity,
         department: String(route || 'upholstery').toLowerCase(),
-        ...(prev.showroom_order === true ? { showroom_order: true, customer_order: false } : {}),
-        ...(prev.customer_order === true && prev.showroom_order !== true
-          ? { customer_order: true }
-          : {}),
+        ...(showroomOrder ? { showroom_order: true, customer_order: false } : {}),
+        ...(!showroomOrder && customerName ? {
+          customer_order: true,
+          customer_name: customerName,
+          customer_phone: customerPhone,
+        } : {}),
       }),
     },
     updated_at: now,
@@ -472,8 +573,10 @@ async function listCompletedJobsAwaitingDriver(sb, table, department) {
     const admin = meta.delivery_admin;
     if (!rowAwaitingDriver(admin)) return null;
     if (String(admin.kind || DELIVERY_ADMIN_KIND.ORDER).toLowerCase() !== DELIVERY_ADMIN_KIND.ORDER) return null;
-    const dest = String(meta.finish_destination || admin.finish_destination || 'delivery').toLowerCase();
+    if (!String(admin.production_job_id || job.id || '').trim()) return null;
+    const dest = String(meta.finish_destination || admin.finish_destination || '').toLowerCase();
     if (dest === 'floor1') return null;
+    if (dest && dest !== 'delivery') return null;
     const asmId = String(admin.assembly_id || job.assembly_id || '').trim();
     if (!asmId) return null;
     return { job, meta, admin, asmId };
@@ -585,8 +688,7 @@ async function listQuoteOrdersAwaitingDriver(sb) {
   const { data, error } = await sb
     .from(QUOTE_ROUTING)
     .select('quote_id, route, completed_at, metadata')
-    .not('completed_at', 'is', null)
-    .limit(500);
+    .limit(800);
   if (error) return [];
 
   const out = [];
@@ -594,22 +696,27 @@ async function listQuoteOrdersAwaitingDriver(sb) {
     const meta = parseRowMetadata(row?.metadata);
     const admin = meta.delivery_admin;
     if (!rowAwaitingDriver(admin)) continue;
-    const asmId = String(admin.assembly_id || '').trim();
-    if (!asmId) continue;
-    const { data: asm } = await sb.from(ASSEMBLIES).select('name, family_sku').eq('id', asmId).maybeSingle();
+    if (routingAlreadyLeftDriverQueue(meta)) continue;
     const lines = quoteRoutingLineItems(meta);
-    const showroom_order = meta.showroom_order === true;
-    const customer_name = String(meta.customer_name || '').trim() || null;
-    const customer_order = !showroom_order && (meta.customer_order === true || Boolean(customer_name));
+    const asmId = String(
+      admin.assembly_id
+      || meta.primary_assembly_id
+      || lines.find((line) => line.assembly_id)?.assembly_id
+      || '',
+    ).trim();
+    if (!asmId) continue;
+    const showroom_order = meta.showroom_order === true || admin.showroom_order === true;
+    const customer_name = String(admin.customer_name || meta.customer_name || '').trim() || null;
+    const customer_order = !showroom_order && (admin.customer_order === true || meta.customer_order === true || Boolean(customer_name));
     out.push({
       quote_id: String(row.quote_id),
       assembly_id: asmId,
-      assembly_name: quoteLinesDisplayName(lines, ''),
-      family_sku: asm?.family_sku || '',
+      assembly_name: quoteLinesDisplayName(lines, admin.assembly_name || ''),
+      family_sku: '',
       quantity: quoteLinesTotalQty(lines, admin.quantity),
       quote_number: admin.quote_number || meta.quote_number || null,
       customer_name,
-      customer_phone: String(meta.customer_phone || '').trim() || null,
+      customer_phone: String(admin.customer_phone || meta.customer_phone || '').trim() || null,
       customer_order,
       showroom_order,
       department: admin.department || row.route || 'upholstery',
@@ -617,8 +724,7 @@ async function listQuoteOrdersAwaitingDriver(sb) {
       delivery_admin_stage: DELIVERY_ADMIN_STAGE.AWAITING_DRIVER,
     });
   }
-  const partial = await listPartialQuoteDeliveryHolds(sb);
-  return [...out, ...partial];
+  return out;
 }
 
 /** Repairs / production orders in Delivery app queue — held on delivery_admin, not warehouse floors. */
@@ -670,14 +776,51 @@ export async function assertAdminQueueDeliveryHold(sb, {
   throw new Error('Delivery admin hold not found for this product.');
 }
 
+function mergeDuplicateOrderRows(rows) {
+  const byQuoteAsm = new Map();
+  const leftover = [];
+  for (const row of rows || []) {
+    const qid = String(row.quote_id || '').trim();
+    const aid = String(row.assembly_id || '').trim();
+    if (!qid || !aid || row.partial_quote_hold_id) {
+      leftover.push(row);
+      continue;
+    }
+    const key = `${qid}:${aid}`;
+    const prev = byQuoteAsm.get(key);
+    if (!prev) {
+      byQuoteAsm.set(key, row);
+      continue;
+    }
+    const preferJob = row.production_job_id && !prev.production_job_id ? row : prev;
+    const other = preferJob === row ? prev : row;
+    byQuoteAsm.set(key, {
+      ...other,
+      ...preferJob,
+      quote_number: preferJob.quote_number || other.quote_number || null,
+      customer_name: preferJob.customer_name || other.customer_name || null,
+      customer_phone: preferJob.customer_phone || other.customer_phone || null,
+      lines: (preferJob.lines && preferJob.lines.length) ? preferJob.lines : other.lines,
+    });
+  }
+  return [...byQuoteAsm.values(), ...leftover];
+}
+
 export async function listOrderDeliveriesForMobile(sb) {
-  const [carpentry, upholstery, painting, partials] = await Promise.all([
+  const [carpentry, upholstery, painting, quoteOrders, partials] = await Promise.all([
     listCompletedJobsAwaitingDriver(sb, CARPENTRY_JOBS, 'carpentry'),
     listCompletedJobsAwaitingDriver(sb, UPHOLSTERY_JOBS, 'upholstery'),
     listCompletedJobsAwaitingDriver(sb, PAINTING_JOBS, 'painting'),
+    listQuoteOrdersAwaitingDriver(sb),
     listPartialQuoteDeliveryHolds(sb),
   ]);
-  const merged = [...carpentry, ...upholstery, ...painting, ...partials];
+  const merged = mergeDuplicateOrderRows([
+    ...carpentry,
+    ...upholstery,
+    ...painting,
+    ...quoteOrders,
+    ...partials,
+  ]);
   const seen = new Set();
   const unique = merged.filter((row) => {
     const key = `${row.assembly_id}:${row.production_job_id || ''}:${row.quote_id || ''}:${row.partial_quote_hold_id || ''}`;
@@ -689,15 +832,66 @@ export async function listOrderDeliveriesForMobile(sb) {
   return hydrateQuoteCustomerAndNumber(sb, withQuotes);
 }
 
+function quoteNumberKey(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const digits = raw.replace(/^qt#?/i, '').replace(/^#/, '').trim();
+  return /^\d+$/.test(digits) ? digits : raw.toLowerCase();
+}
+
 async function hydrateQuoteCustomerAndNumber(sb, rows) {
-  const ids = [...new Set((rows || []).map((r) => String(r.quote_id || '').trim()).filter(Boolean))];
-  if (!ids.length) return rows;
-  const { data: quotes } = await sb
-    .from('quotations')
-    .select('id, quote_number, customer_id')
-    .in('id', ids);
-  const quoteById = new Map((quotes || []).map((q) => [String(q.id), q]));
-  const customerIds = [...new Set((quotes || []).map((q) => String(q.customer_id || '').trim()).filter(Boolean))];
+  const list = Array.isArray(rows) ? rows : [];
+  const ids = [...new Set(list.map((r) => String(r.quote_id || '').trim()).filter(Boolean))];
+  const numberKeys = [...new Set(list.map((r) => quoteNumberKey(r.quote_number)).filter(Boolean))];
+  if (!ids.length && !numberKeys.length) return list;
+
+  const quoteById = new Map();
+  const quoteByNumber = new Map();
+  if (ids.length) {
+    const { data: quotes } = await sb
+      .from('quotations')
+      .select('id, quote_number, customer_id')
+      .in('id', ids);
+    (quotes || []).forEach((q) => {
+      quoteById.set(String(q.id), q);
+      const key = quoteNumberKey(q.quote_number);
+      if (key) quoteByNumber.set(key, q);
+    });
+  }
+  const unresolvedNumbers = numberKeys.filter((key) => !quoteByNumber.has(key));
+  await Promise.all(unresolvedNumbers.map(async (key) => {
+    const variants = [key, `QT#${key}`, `QT${key}`, `#${key}`];
+    for (const variant of variants) {
+      const { data: quote } = await sb
+        .from('quotations')
+        .select('id, quote_number, customer_id')
+        .eq('quote_number', variant)
+        .maybeSingle();
+      if (quote?.id) {
+        quoteById.set(String(quote.id), quote);
+        quoteByNumber.set(key, quote);
+        return;
+      }
+    }
+  }));
+
+  const routingIds = [...new Set([
+    ...ids,
+    ...[...quoteById.keys()],
+  ])];
+  const routingByQuoteId = new Map();
+  if (routingIds.length) {
+    const { data: routingRows } = await sb
+      .from(QUOTE_ROUTING)
+      .select('quote_id, metadata')
+      .in('quote_id', routingIds.slice(0, 400));
+    (routingRows || []).forEach((row) => {
+      const meta = parseRowMetadata(row.metadata);
+      routingByQuoteId.set(String(row.quote_id), meta);
+    });
+  }
+
+  const customerIds = [...new Set([...quoteById.values()].map((q) => String(q.customer_id || '').trim()).filter(Boolean))];
   const contactById = new Map();
   if (customerIds.length) {
     const { data: customers } = await sb.from('customers').select('id, name, phone').in('id', customerIds);
@@ -710,15 +904,34 @@ async function hydrateQuoteCustomerAndNumber(sb, rows) {
       });
     }
   }
-  return (rows || []).map((row) => {
-    const q = quoteById.get(String(row.quote_id || '').trim());
-    if (!q) return row;
-    const contact = contactById.get(String(q.customer_id || '').trim());
-    const quoteNumber = String(row.quote_number ?? q.quote_number ?? '').trim() || null;
-    const customerName = String(row.customer_name || contact?.name || '').trim() || null;
-    const customerPhone = String(row.customer_phone || contact?.phone || '').trim() || null;
+
+  return list.map((row) => {
+    const q = quoteById.get(String(row.quote_id || '').trim())
+      || quoteByNumber.get(quoteNumberKey(row.quote_number));
+    const routingMeta = routingByQuoteId.get(String((q?.id || row.quote_id || '')).trim()) || {};
+    const contact = q ? contactById.get(String(q.customer_id || '').trim()) : null;
+    const quoteNumber = String(
+      row.quote_number
+      || q?.quote_number
+      || routingMeta.quote_number
+      || routingMeta.delivery_admin?.quote_number
+      || '',
+    ).trim() || null;
+    const customerName = String(
+      row.customer_name
+      || contact?.name
+      || routingMeta.customer_name
+      || '',
+    ).trim() || null;
+    const customerPhone = String(
+      row.customer_phone
+      || contact?.phone
+      || routingMeta.customer_phone
+      || '',
+    ).trim() || null;
     return {
       ...row,
+      quote_id: row.quote_id || (q?.id ? String(q.id) : null),
       quote_number: quoteNumber,
       customer_name: customerName,
       customer_phone: customerPhone,

@@ -92,7 +92,14 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
     }
   }, [sessionId, groups.length, navigation, sessionOpening]);
 
-  const displayNoteNumber = printNoteNumber || deliveryNumber;
+  const looksLikeUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const noteFromRoute = looksLikeUuid.test(printNoteNumber) ? '' : printNoteNumber;
+  const noteFromSession = looksLikeUuid.test(String(deliveryNumber || '')) ? '' : String(deliveryNumber || '').trim();
+  const productHint = (groups || [])
+    .map((g) => String(g?.assembly_name || '').trim())
+    .filter(Boolean)
+    .join(', ');
+  const displayNoteNumber = noteFromRoute || noteFromSession || productHint;
 
 
   useEffect(() => {

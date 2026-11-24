@@ -47,6 +47,19 @@ function departmentName(row, locale) {
   return raw || tUi('dashUnifiedOrders', locale);
 }
 
+function looksLikeUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+}
+
+function formatQuoteLabel(value) {
+  const raw = String(value || '').trim();
+  if (!raw || looksLikeUuid(raw)) return '';
+  if (/^qt#/i.test(raw)) return raw;
+  if (/^qt/i.test(raw)) return `QT#${raw.slice(2).replace(/^#/, '')}`;
+  if (/^\d+$/.test(raw)) return `QT#${raw}`;
+  return raw;
+}
+
 function sourceLabel(row, locale) {
   if (row?._kind === 'repair') return tUi('sourceRepair', locale);
   if (row?.showroom_order === true) return tUi('sourceShowroom', locale);
@@ -63,7 +76,13 @@ function customerDisplay(row, locale) {
 }
 
 function quoteDisplay(row) {
-  return String(row?.quote_number || '').trim() || '—';
+  return formatQuoteLabel(row?.quote_number) || '—';
+}
+
+function deliveryNoteLabel(row, sessionDeliveryNumber) {
+  return formatQuoteLabel(row?.quote_number)
+    || String(row?.return_number || '').trim()
+    || (looksLikeUuid(sessionDeliveryNumber) ? '' : String(sessionDeliveryNumber || '').trim());
 }
 
 async function openStagedOrderDelivery(navigation, row) {
@@ -85,7 +104,7 @@ async function openStagedOrderDelivery(navigation, row) {
     finished_driver_checked: true,
     finished_driver_checked_at: now,
   }];
-  const printNoteNumber = String(row.quote_number || row.production_job_id || '').trim();
+  const printNoteNumber = deliveryNoteLabel(row, session.delivery_number);
   const documentKind = row.showroom_order ? 'showroom_delivery' : 'order_delivery';
   const printGroups = printGroupsFromQuoteLines(quoteLines.length
     ? quoteLines

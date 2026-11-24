@@ -430,4 +430,14 @@ assert(
   'fulfillment nav must link temporary Floor 1 delivery page',
 );
 
+const deliveryQueue = fs.readFileSync(path.join(root, 'server/lib/warehouseDeliveryAdminQueue.js'), 'utf8');
+assert(
+  /listOrderDeliveriesForMobile[\s\S]*listQuoteOrdersAwaitingDriver/.test(deliveryQueue),
+  'Delivery Orders must include Hassan quote completions from carpentry/upholstery',
+);
+assert(
+  deliveryQueue.includes('hydrateQuoteCustomerAndNumber'),
+  'Delivery Orders must hydrate quote number and customer name',
+);
+
 console.log('verifyWarehouseDeliveryFlow: ok');
