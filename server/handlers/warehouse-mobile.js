@@ -2319,8 +2319,7 @@ async function opProductionPacketCreate(body, user) {
   if (!warehouseLocationId) throw new Error('warehouse_location_id is required.');
   const nameClash = await findProductionNameClash(sb, name);
   if (nameClash) {
-    const scope = nameClash.kind === 'catalog' ? 'product catalog' : 'warehouse';
-    throw new Error(`"${nameClash.name}" is already in your ${scope}. Choose a different name.`);
+    throw new Error(`"${nameClash.name}" is already in the warehouse. Choose a different name.`);
   }
   await assertUniqueSku(sb, familySku);
 
@@ -2942,11 +2941,9 @@ async function opPacketNameCheck(body) {
     return { taken: false, name };
   }
   const sameFullName = normalizeWarehousePacketNameKey(clash.name) === normalizeWarehousePacketNameKey(name);
-  const lookupHint = clash.kind === 'catalog'
-    ? 'Search Products List (shop catalog), not Warehouse → Products.'
-    : clash.kind === 'packet'
-      ? 'Search Warehouse → Products (packet name on a product).'
-      : 'Search Warehouse → Products.';
+  const lookupHint = clash.kind === 'packet'
+    ? 'Search Warehouse Floors (packet name on a product).'
+    : 'Search Warehouse Floors.';
   return {
     taken: true,
     name,

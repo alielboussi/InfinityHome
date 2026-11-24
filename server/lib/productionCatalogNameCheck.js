@@ -1,5 +1,6 @@
 /**
- * Production naming — block duplicates against warehouse products/packets and POS catalog names.
+ * Production naming — block duplicates against warehouse products/packets only.
+ * Shop/POS Products List is a separate catalog and must not block or receive warehouse creates.
  */
 import {
   extractProductionBaseName,
@@ -16,7 +17,7 @@ function productionNameHasSeatPreset(name) {
   return Boolean(fullKey && baseKey && fullKey !== baseKey);
 }
 
-/** Pool first names only — shop "Olivia" blocks "Olivia Single Seater"; brand lines like "High Class" do not. */
+/** Pool first names only — warehouse "Olivia" blocks "Olivia Single Seater"; brand lines like "High Class" do not. */
 function shopBareNameBlocksProductionPreset(proposedName) {
   if (!productionNameHasSeatPreset(proposedName)) return true;
   const base = extractProductionBaseName(proposedName);
@@ -49,7 +50,6 @@ export function productionNamesConflict(proposedName, existingName) {
 
   if (baseA && baseB && baseA === baseB) return true;
 
-  // Shop catalog bare name vs production preset (pool names only).
   if (baseA && baseA === fullB) {
     return shopBareNameBlocksProductionPreset(proposed);
   }
@@ -67,19 +67,16 @@ export async function findProductionNameClash(sb, proposedName, {
   const name = String(proposedName || '').trim();
   if (!name) return null;
 
-  const [{ data: packets, error: pErr }, { data: assemblies, error: aErr }, { data: products, error: cErr }] = await Promise.all([
+  const [{ data: packets, error: pErr }, { data: assemblies, error: aErr }] = await Promise.all([
     sb.from('warehouse_packets').select('id, name'),
     sb.from('warehouse_assemblies').select('id, name'),
-    sb.from('products').select('id, name'),
   ]);
   if (pErr) throw new Error(pErr.message || 'Failed to validate packet names');
   if (aErr) throw new Error(aErr.message || 'Failed to validate product names');
-  if (cErr) throw new Error(cErr.message || 'Failed to validate catalog names');
 
   const rows = [
     ...(packets || []).map((row) => ({ ...row, kind: 'packet' })),
     ...(assemblies || []).map((row) => ({ ...row, kind: 'assembly' })),
-    ...(products || []).map((row) => ({ ...row, kind: 'catalog' })),
   ];
 
   return rows.find((row) => {

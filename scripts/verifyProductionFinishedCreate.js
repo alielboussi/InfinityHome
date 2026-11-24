@@ -30,6 +30,10 @@ if (!fn.includes('warehouse_assembly_inventory')) {
   console.error('[verifyProductionFinishedCreate] production create must upsert warehouse_assembly_inventory');
   process.exit(1);
 }
+if (fn.includes("from('products').insert")) {
+  console.error('[verifyProductionFinishedCreate] production create must not insert shop Products List rows');
+  process.exit(1);
+}
 
 const photoOp = src.includes("case 'production-assembly-photo'");
 if (!photoOp || !src.includes('opProductionAssemblyPhoto')) {

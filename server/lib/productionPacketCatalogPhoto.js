@@ -14,33 +14,8 @@ function storageFolder(entityId, kind = 'packet') {
   return `warehouse-production-packets/${id}`;
 }
 
-async function syncPosProductImage(sb, { sku, name, imageUrl }) {
-  const cleanSku = String(sku || '').trim();
-  if (!cleanSku || !imageUrl) return null;
-  const variants = [cleanSku, cleanSku.toUpperCase(), cleanSku.toLowerCase()];
-  let product = null;
-  for (const candidate of variants) {
-    const { data: rows } = await sb.from('products').select('id, sku').eq('sku', candidate).limit(1);
-    if (Array.isArray(rows) && rows[0]) {
-      product = rows[0];
-      break;
-    }
-  }
-  if (!product?.id) return null;
-  const now = new Date().toISOString();
-  const productId = product.id;
-  await sb.from('product_images').delete().eq('product_id', productId);
-  await sb.from('product_images').insert([{ product_id: productId, image_url: imageUrl }]);
-  await sb.from('products').update({
-    image_url: imageUrl,
-    updated_at: now,
-    ...(name ? { name: String(name).trim() } : {}),
-  }).eq('id', productId);
-  return productId;
-}
-
 /**
- * Retouch seating photo, upload to storage, link to warehouse packet SKU (and POS product when present).
+ * Retouch seating photo, upload to storage, link to warehouse packet SKU.
  */
 export async function attachProductionPacketCatalogPhoto(sb, {
   packet,
@@ -72,12 +47,6 @@ export async function attachProductionPacketCatalogPhoto(sb, {
     updated_at: now,
   }).eq('id', packetId);
   if (packetErr) throw new Error(packetErr.message || 'Failed to save packet photo.');
-
-  await syncPosProductImage(sb, {
-    sku,
-    name: productName || packet?.name,
-    imageUrl: publicUrl,
-  });
 
   return rewriteLegacyProductImageUrl(publicUrl) || publicUrl;
 }
@@ -142,14 +111,6 @@ export async function attachProductionAssemblyCatalogPhoto(sb, {
     updated_at: now,
   }).eq('id', assemblyId);
   if (asmErr) throw new Error(asmErr.message || 'Failed to save product photo.');
-
-  syncPosProductImage(sb, {
-    sku,
-    name: productName || assembly?.name,
-    imageUrl: publicUrl,
-  }).catch((syncErr) => {
-    console.warn('[productionPacketCatalogPhoto] POS image sync deferred:', syncErr?.message || syncErr);
-  });
 
   return rewriteLegacyProductImageUrl(publicUrl) || publicUrl;
 }

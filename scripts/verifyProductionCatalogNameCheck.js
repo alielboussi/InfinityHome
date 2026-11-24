@@ -1,5 +1,4 @@
 import {
-  findProductionNameClash,
   productionNamesConflict,
 } from '../server/lib/productionCatalogNameCheck.js';
 
