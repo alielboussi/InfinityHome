@@ -47,7 +47,12 @@ export function computeProductionFlowStatus(department, job) {
 
   if (status === 'cancelled') return 'Cancelled';
 
-  if (ACTIVE_STATUSES.has(status)) return 'In production';
+  if (ACTIVE_STATUSES.has(status)) {
+    if (dept === 'carpentry') return 'In Carpentry';
+    if (dept === 'upholstery') return 'In Upholstery';
+    if (dept === 'painting') return 'In Painting';
+    return 'In production';
+  }
 
   if (status === 'completed') {
     const stage = deliveryAdminStage(meta);

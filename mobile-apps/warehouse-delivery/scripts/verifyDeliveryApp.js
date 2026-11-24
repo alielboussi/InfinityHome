@@ -66,6 +66,15 @@ try {
   }
 
   const appJs = fs.readFileSync(path.join(appRoot, 'App.js'), 'utf8');
+  assert(
+    appJs.includes('DeliverySafeFrame') && appJs.includes('kioskAndroidNavReserve'),
+    'App.js must lift all screens above the Android nav bar (DeliverySafeFrame)',
+  );
+  const kioskLayout = fs.readFileSync(path.join(appRoot, 'deliveryKit', 'lib', 'kioskLayout.js'), 'utf8');
+  assert(
+    kioskLayout.includes('kioskAndroidNavReserve') && kioskLayout.includes('kioskModalBottomPad'),
+    'deliveryKit kioskLayout must reserve Android nav space and pad modals',
+  );
   assert(appJs.includes('./deliveryKit/components/ProductionAppAuthGate'), 'App.js must import auth gate from ./deliveryKit');
   assert(appJs.includes('./shared/MobileScreenGate'), 'App.js must import MobileScreenGate from ./shared');
   assert(!appJs.includes('ReturnOrders'), 'Delivery app must not register return/repair routes — use workshop apps');
@@ -82,6 +91,10 @@ try {
   assert(
     !appConfig.includes('9cb085a252a1f4939049f3'),
     'Delivery app must not default to Warehouse Production Firebase appId',
+  );
+  assert(
+    appConfig.includes('edgeToEdgeEnabled: false'),
+    'Delivery Android config must disable edge-to-edge so system buttons do not overlay flow actions',
   );
 
   assert(fs.existsSync(path.join(appRoot, 'config', 'deliveryAppUi.js')), 'config/deliveryAppUi.js required');

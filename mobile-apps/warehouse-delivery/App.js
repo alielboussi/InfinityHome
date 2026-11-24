@@ -4,7 +4,8 @@ import { useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { kioskAndroidNavReserve } from './deliveryKit/lib/kioskLayout';
 import ProductionAppAuthGate from './deliveryKit/components/ProductionAppAuthGate';
 import MobileScreenGate from './shared/MobileScreenGate';
 import { useDeliveryAccessGrant } from './hooks/useDeliveryAccessGrant';
@@ -208,23 +209,38 @@ function MainStack({ navigationRef }) {
   );
 }
 
+function DeliverySafeFrame({ children }) {
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={[styles.safeFrame, { paddingBottom: kioskAndroidNavReserve(insets) }]}>
+      {children}
+    </View>
+  );
+}
+
 export default function App() {
   const navigationRef = useRef(null);
   return (
     <SafeAreaProvider>
-      <ProductionAppAuthGate
-        titleKey="dashDeliveryAppTitle"
-        signInMethods={__DEV__ ? 'both' : 'google'}
-      >
-        <NavigationContainer ref={navigationRef}>
-          <MainStack navigationRef={navigationRef} />
-        </NavigationContainer>
-      </ProductionAppAuthGate>
+      <DeliverySafeFrame>
+        <ProductionAppAuthGate
+          titleKey="dashDeliveryAppTitle"
+          signInMethods={__DEV__ ? 'both' : 'google'}
+        >
+          <NavigationContainer ref={navigationRef}>
+            <MainStack navigationRef={navigationRef} />
+          </NavigationContainer>
+        </ProductionAppAuthGate>
+      </DeliverySafeFrame>
     </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
+  safeFrame: {
+    flex: 1,
+    backgroundColor: theme.bg,
+  },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',

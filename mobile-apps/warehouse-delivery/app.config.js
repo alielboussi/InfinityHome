@@ -59,6 +59,10 @@ module.exports = {
     version: '0.1.0',
     orientation: 'portrait',
     userInterfaceStyle: 'dark',
+    androidNavigationBar: {
+      backgroundColor: '#000928',
+      barStyle: 'light-content',
+    },
     icon: './assets/icon.png',
     splash: {
       image: './assets/icon.png',
@@ -67,6 +71,7 @@ module.exports = {
     },
     android: {
       package: DELIVERY_PACKAGE,
+      edgeToEdgeEnabled: false,
       ...(fs.existsSync(googleServicesPath) ? { googleServicesFile: './google-services.json' } : {}),
       softwareKeyboardLayoutMode: 'resize',
       permissions: [

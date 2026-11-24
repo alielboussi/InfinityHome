@@ -13,11 +13,12 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import ProductionQrScanModal from './ProductionQrScanModal';
 import ProductionKioskTopBar from './ProductionKioskTopBar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { kioskModalBottomPad } from '../lib/kioskLayout';
 import { kiosk } from './kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi } from '../lib/productionKioskI18n';
 import {
-  fetchProductionFloor2CatalogMeta,
   fetchProductionStoreroomMaterials,
   saveProductionJobMaterials,
 } from '../services/productionApi';
@@ -35,7 +36,6 @@ import {
   materialLinesNeedStoreroomPick,
   warehouseLocationIdFromStoredRow,
   mergeCatalogByFamilySku,
-  mergeFloor2WipIntoMaterialCatalog,
   catalogForStoreroomDeductionOnly,
   filterStoreroomPickerOptions,
   parseStoreroomsFromMaterialsApi,
@@ -91,6 +91,7 @@ export default function ProductionJobMaterialsModal({
   const { locale: localeHook, textAlign: textAlignHook, toggleLocale } = useProductionKioskLocale();
   const locale = localeProp || localeHook;
   const textAlign = textAlignProp || textAlignHook;
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [catalog, setCatalog] = useState([]);
@@ -125,25 +126,23 @@ export default function ProductionJobMaterialsModal({
   }, [visible, initialLines]);
 
   const storeroomDeductionOnly = jobKind === 'painting' || !allowFloor2WipDeduction;
-  const isHassanQuoteMaterials = false;
+  const isHassanQuoteMaterials = jobKind === 'quote'
+    && String(productionRoute || '').toLowerCase() === 'upholstery';
 
   const loadCatalog = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const payload = await fetchProductionStoreroomMaterials();
+      const payload = await fetchProductionStoreroomMaterials({
+        includeFloor1Finished: isHassanQuoteMaterials,
+      });
       const raw = Array.isArray(payload) ? payload : (payload?.materials || []);
       const uomMap = buildUomLabelMap(Array.isArray(payload) ? {} : payload);
-      let merged = mergeCatalogByFamilySku(raw);
-      if (isHassanQuoteMaterials) {
-        try {
-          const { products, floor2LocationId } = await fetchProductionFloor2CatalogMeta();
-          if (floor2LocationId && (products || []).length) {
-            merged = mergeFloor2WipIntoMaterialCatalog(merged, products, floor2LocationId);
-          }
-        } catch {
-          /* Floor 2 catalog optional */
-        }
+      const floor1Rows = raw.filter((row) => row?.floor1_finished);
+      const storeroomRows = raw.filter((row) => !row?.floor1_finished);
+      let merged = mergeCatalogByFamilySku(storeroomRows);
+      if (isHassanQuoteMaterials && floor1Rows.length) {
+        merged = [...merged, ...floor1Rows];
       }
       let list = enrichCatalogMaterialUom(
         filterInStockCatalogMaterials(merged),
@@ -234,6 +233,13 @@ export default function ProductionJobMaterialsModal({
 
   const requestAddMaterial = (row) => {
     if (!row) return;
+    if (row.floor1_finished) {
+      const locId = String(row.locations?.[0]?.location_id || '').trim();
+      if (locId) {
+        finalizeAddMaterial(row, locId);
+        return;
+      }
+    }
     if (!isStoreroomMaterialSelectable(row)) {
       Alert.alert(
         tUi('quoteOrderMaterials', locale),
@@ -426,7 +432,7 @@ export default function ProductionJobMaterialsModal({
         {error ? <Text style={kiosk.noticeErr}>{error}</Text> : null}
         {isHassanQuoteMaterials ? (
           <Text style={[kiosk.hint, styles.floor2Hint, { textAlign }]}>
-            {tUi('quoteOrderMaterialsFloor2Hint', locale)}
+            {tUi('quoteOrderMaterialsFloor1Hint', locale)}
           </Text>
         ) : null}
         {search.trim() && filteredSearch.length > 0 ? (
@@ -463,7 +469,9 @@ export default function ProductionJobMaterialsModal({
                 <View style={styles.lineHead}>
                   <Text style={styles.lineName}>{item.name || stock?.name}</Text>
                   <Text style={styles.lineSku}>{item.family_sku || stock?.family_sku}</Text>
-                  {locLabel ? (
+                  {locLabel && /floor\s*1/i.test(locLabel) ? (
+                    <Text style={styles.lineUom}>{locLabel}</Text>
+                  ) : locLabel ? (
                     <Pressable onPress={() => requestStoreroomChange(item)} accessibilityRole="button">
                       <Text style={[styles.lineUom, styles.lineStoreroomTap]}>
                         {locLabel}
@@ -520,7 +528,7 @@ export default function ProductionJobMaterialsModal({
             );
           }}
         />
-        <View style={styles.footer}>
+        <View style={[styles.footer, { paddingBottom: kioskModalBottomPad(insets) }]}>
           <View style={styles.footerSlot}>
             <Pressable
               style={[styles.footerAction, styles.footerCancel]}

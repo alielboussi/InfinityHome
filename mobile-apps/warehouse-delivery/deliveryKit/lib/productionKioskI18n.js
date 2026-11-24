@@ -124,11 +124,13 @@ const UI_STRINGS = {
   needPreset: { en: 'Choose a product type to build the product name.', ar: 'اختر نوع المنتج لبناء اسم المنتج.' },
   needQty: { en: 'Enter stock quantity (1 or more — one label per unit).', ar: 'أدخل كمية المخزون (1 أو أكثر — ملصق لكل وحدة).' },
   saveFailedTitle: { en: 'Could not save item', ar: 'تعذر حفظ العنصر' },
+  savePhotoFailedTitle: { en: 'Saved without photo', ar: 'حُفظ بدون صورة' },
   createAiPhotoFailedHint: {
-    en: 'AI photo retouch did not finish. Warehouse stock is not updated until retouch succeeds. Tap Retry or discard the draft.',
-    ar: 'لم يكتمل تحسين الصورة بالذكاء الاصطناعي. لا يُحدَّث مخزون المستودع حتى ينجح. اضغط إعادة المحاولة أو تجاهل المسودة.',
+    en: 'The product is already on Floor 1, but the photo did not upload. Tap Retry photo — do not create it again.',
+    ar: 'المنتج موجود في الطابق 1، لكن الصورة لم تُرفع. اضغط إعادة محاولة الصورة — لا تنشئه من جديد.',
   },
-  createAiPhotoRetry: { en: 'Retry AI photo', ar: 'إعادة محاولة الصورة' },
+  createAiPhotoRetry: { en: 'Retry photo', ar: 'إعادة محاولة الصورة' },
+  createKeepWithoutPhoto: { en: 'Keep without photo', ar: 'إبقاء بدون صورة' },
   createDiscardDraft: { en: 'Discard draft', ar: 'تجاهل المسودة' },
   createDiscardDraftFailed: { en: 'Could not discard draft.', ar: 'تعذر تجاهل المسودة.' },
   createAiPhotoRetryLost: {
@@ -185,6 +187,10 @@ const UI_STRINGS = {
     en: 'Storeroom materials plus in-stock Floor 2 raw WIP (scan SKU or search).',
     ar: 'مواد المستودع بالإضافة إلى خام WIP المتوفّر في الطابق 2 (امسح SKU أو ابحث).',
   },
+  quoteOrderMaterialsFloor1Hint: {
+    en: 'Scan a finished Floor 1 product to send this Hassan order from stock. Floor 1 is deducted on save; the order still goes to Delivery with the customer details (unlike Floor 1 direct delivery).',
+    ar: 'امسح منتجاً جاهزاً من الطابق 1 لإرسال طلب حسن من المخزون. يُخصم من الطابق 1 عند الحفظ، ويبقى الطلب في التوصيل مع بيانات الزبون (بخلاف التسليم المباشر من الطابق 1).',
+  },
   quoteOrderMaterialsHint: {
     en: 'Open Materials to pick items, type a barcode, or scan — storeroom is deducted when you save.',
     ar: 'افتح المواد لاختيار الأصناف أو إدخال/مسح الباركود — يُخصم من المخزن عند الحفظ.',
@@ -201,8 +207,8 @@ const UI_STRINGS = {
   quoteLineHandoffDelivery: { en: 'Send to delivery', ar: 'إرسال للتسليم' },
   quoteLineHandoffFloor1: { en: 'Floor 1 stock', ar: 'مخزون الطابق 1' },
   quoteOrderDispositionPrompt: {
-    en: 'Store on Floor 1, or send to the Delivery app orders queue?',
-    ar: 'تخزين في الطابق 1، أم إرسال إلى قائمة التسليم في تطبيق التوصيل؟',
+    en: 'Store on Floor 1 (customer labels print automatically), or send to Delivery?',
+    ar: 'تخزين في الطابق 1 (تُطبع ملصقات الزبون تلقائياً)، أم إرسال إلى التوصيل؟',
   },
   quoteOrderDispositionTitle: { en: 'Finished order', ar: 'الطلب المكتمل' },
   quoteLineProgress: { en: 'Completed', ar: 'مكتمل' },
@@ -990,6 +996,10 @@ const UI_STRINGS = {
   saveFailedConnection: {
     en: 'Save failed. Check your connection and try again.',
     ar: 'فشل الحفظ. تحقق من الاتصال ثم أعد المحاولة.',
+  },
+  saveFailedDns: {
+    en: 'Cannot reach the server (DNS). Switch Wi-Fi or mobile data, then try again.',
+    ar: 'تعذر الوصول إلى الخادم (الشبكة). بدّل الواي فاي أو بيانات الجوال ثم أعد المحاولة.',
   },
   createSaveDataLost: {
     en: 'Save data was lost. Tap Save production item again.',

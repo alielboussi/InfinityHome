@@ -1,6 +1,8 @@
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../shared/theme';
 import { kiosk } from './kioskStyles';
+import { kioskModalBottomPad } from '../lib/kioskLayout';
 import { tUi } from '../lib/productionKioskI18n';
 
 function DeliveryDriverPicker({
@@ -14,12 +16,13 @@ function DeliveryDriverPicker({
   onClose,
   onSelect,
 }) {
+  const insets = useSafeAreaInsets();
   const list = Array.isArray(drivers) ? drivers : [];
   const showLoading = loading && !list.length;
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+        <Pressable style={[styles.sheet, { paddingBottom: kioskModalBottomPad(insets) }]} onPress={(e) => e.stopPropagation()}>
           <Text style={[styles.title, { textAlign }]}>{title}</Text>
           <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
             {showLoading ? (

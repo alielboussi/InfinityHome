@@ -388,9 +388,43 @@ function patchDeliveryOrderQueue(filePath) {
   writePatchFile(filePath, s);
 }
 
+function patchKioskNavLayout(filePath) {
+  if (!fs.existsSync(filePath)) return;
+  let s = fs.readFileSync(filePath, 'utf8');
+  if (s.includes('kioskAndroidNavReserve') && s.includes('kioskModalBottomPad')) return;
+  s = s.replace(
+    /const ANDROID_NAV_MIN = \d+;/,
+    `const ANDROID_NAV_MIN = 72;
+export const KIOSK_SCROLL_EXTRA_BOTTOM = 28;
+
+/** Space reserved for the Android 3-button / Samsung nav bar (often reported as 0). */
+export function kioskAndroidNavReserve(insets) {
+  const reported = Number(insets?.bottom) || 0;
+  if (Platform.OS === 'android') return Math.max(reported, ANDROID_NAV_MIN);
+  return Math.max(reported, 16);
+}`,
+  );
+  s = s.replace(
+    /\/\*\* Bottom inset for footers when SafeArea reports 0 on Android\. \*\/\r?\nexport function kioskFooterBottomPad\(insets\) \{\r?\n  const reported = insets\?\.bottom \?\? 0;\r?\n  if \(Platform\.OS === 'android'\) \{\r?\n    return Math\.max\(reported, ANDROID_NAV_MIN\);\r?\n  \}\r?\n  return Math\.max\(reported, 16\);\r?\n\}/,
+    `/**
+ * Extra gap above flow buttons. Android nav chrome is reserved by DeliverySafeFrame in App.js.
+ */
+export function kioskFooterBottomPad(_insets) {
+  return 16;
+}
+
+/** Modals sit above the window (outside DeliverySafeFrame) — include the nav reserve. */
+export function kioskModalBottomPad(insets) {
+  return kioskAndroidNavReserve(insets) + 12;
+}`,
+  );
+  writePatchFile(filePath, s);
+}
+
 function main() {
   require('./ensureDeliveryQuotePrintUtils').main?.();
   copyDirMerge(overlaysRoot, kitRoot);
+  patchKioskNavLayout(path.join(kitRoot, 'lib', 'kioskLayout.js'));
   patchProductionNameClashUi(path.join(kitRoot, 'lib', 'productionNameClashUi.js'));
   patchDeliveryHubI18n(path.join(kitRoot, 'lib', 'productionKioskI18n.js'));
   patchDeliveryWarehouseCatalog(path.join(kitRoot, 'lib', 'deliveryWarehouseCatalog.js'));

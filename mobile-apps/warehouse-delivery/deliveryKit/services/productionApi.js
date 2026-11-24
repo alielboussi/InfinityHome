@@ -590,7 +590,8 @@ export async function acceptUpholsteryQuote(quoteId, { productionLineSet = null 
 }
 
 export async function completeUpholsteryQuote(quoteId, { destination = 'delivery', productionLineSet = null } = {}) {
-  const dest = String(destination || 'delivery').toLowerCase() === 'floor1' ? 'floor1' : 'delivery';
+  const raw = String(destination || 'delivery').toLowerCase();
+  const dest = raw === 'floor1' ? 'floor1' : (raw === 'labels' || raw === 'label' || raw === 'print_labels' ? 'labels' : 'delivery');
   return productionOp('production-quote-complete', {
     route: UPHOLSTERY_ROUTE,
     quote_id: quoteId,
@@ -680,8 +681,10 @@ export async function pushProductionFloor2Manufacture({
   });
 }
 
-export async function fetchProductionStoreroomMaterials() {
-  const payload = await productionOp('production-storeroom-materials-list', {});
+export async function fetchProductionStoreroomMaterials({ includeFloor1Finished = false } = {}) {
+  const payload = await productionOp('production-storeroom-materials-list', {
+    include_floor1_finished: Boolean(includeFloor1Finished),
+  });
   if (Array.isArray(payload)) {
     return { materials: payload, storerooms: [], storeroom_labels: [], uom_options: [] };
   }
@@ -690,6 +693,7 @@ export async function fetchProductionStoreroomMaterials() {
     storerooms: payload?.storerooms || [],
     storeroom_labels: payload?.storeroom_labels || [],
     uom_options: payload?.uom_options || [],
+    floor1_location_id: payload?.floor1_location_id || null,
   };
 }
 

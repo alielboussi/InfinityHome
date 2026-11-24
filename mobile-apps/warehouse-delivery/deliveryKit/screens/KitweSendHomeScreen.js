@@ -42,7 +42,8 @@ import {
   formatDeliveryPackSummary,
 } from '../shared/warehouseDeliveryBoxUnits';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
-import { kioskRowDirection } from '../lib/kioskLayout';
+import { kioskFooterBottomPad, kioskRowDirection } from '../lib/kioskLayout';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getProductionDispatcherLabelSync } from '../lib/productionDispatcherLabel';
 
 /** Invisible FlatList row so Floor 1 send uses one scroll surface (header/footer), not ScrollView + list. */
@@ -87,6 +88,8 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, d
   const sessionOpenOp = isFarmFlow ? 'farm-delivery-session-open' : 'delivery-session-open';
   const signatureRoute = isFarmFlow ? 'FarmSendSignature' : 'KitweSendSignature';
   const { locale, toggleLocale, textAlign } = useProductionKioskLocale();
+  const insets = useSafeAreaInsets();
+  const listBottomPad = kioskFooterBottomPad(insets) + 28;
   const restored = readDeliveryWorkspace();
   const [sessionId, setSessionId] = useState(restored?.sessionId || '');
   const [deliveryNumber, setDeliveryNumber] = useState(restored?.deliveryNumber || '');
@@ -1486,7 +1489,7 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, d
           numColumns={2}
           columnWrapperStyle={styles.farmGridRow}
           extraData={draftAssemblyId}
-          contentContainerStyle={styles.wrap}
+          contentContainerStyle={[styles.wrap, { paddingBottom: listBottomPad }]}
           ListHeaderComponent={kitweListHeader}
           ListFooterComponent={kitweListFooter}
         />
@@ -1495,7 +1498,7 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, d
           data={KITWE_SEND_SCROLL_STUB}
           renderItem={() => <View style={styles.scrollStub} />}
           keyExtractor={(item) => String(item.id)}
-          contentContainerStyle={styles.wrap}
+          contentContainerStyle={[styles.wrap, { paddingBottom: listBottomPad }]}
           ListHeaderComponent={kitweListHeader}
           ListFooterComponent={kitweListFooter}
         />

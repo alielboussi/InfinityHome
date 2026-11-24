@@ -8,6 +8,7 @@ const CRITICAL_REL_PATHS = [
   'screens/ProductionPushSettingsScreen.js',
   'productionPushPrefs.js',
   'lib/productionPushNavigation.js',
+  'apiBaseFetch.js',
 ];
 
 function ensureCriticalSharedFiles(appSharedDir, templateRoot) {
