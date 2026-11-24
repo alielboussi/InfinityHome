@@ -317,9 +317,8 @@ export async function finishCarpentryProductionJob(sb, {
   preferredStoreroomLocationId = null,
   destination = 'delivery',
 }) {
-  const dest = String(destination || 'delivery').trim().toLowerCase() === 'floor1'
-    ? 'floor1'
-    : 'delivery';
+  const destRaw = String(destination || 'delivery').trim().toLowerCase();
+  const dest = destRaw === 'floor1' ? 'floor1' : destRaw === 'floor2' ? 'floor2' : 'delivery';
   const job = await loadJob(sb, jobId);
   if (!ACTIVE_STATUSES.has(normalizeJobStatus(job.status))) throw new Error('Job is not active');
 
@@ -327,12 +326,14 @@ export async function finishCarpentryProductionJob(sb, {
   const meta = job.metadata || {};
   const qty = Math.max(1, Math.floor(Number(job.product_qty) || 1));
   const { lookupQuoteIdForAssembly } = await import('./warehouseDeliveryAdminQueue.js');
-  const linkedQuoteId = String(meta.quote_id || meta.carpentry_quote_id || job.quote_id || '').trim()
-    || await lookupQuoteIdForAssembly(sb, productId, {
-      department: 'carpentry',
-      assemblyName: job.product_name,
-      quantity: qty,
-    });
+  const linkedQuoteId = dest === 'floor2'
+    ? ''
+    : (String(meta.quote_id || meta.carpentry_quote_id || job.quote_id || '').trim()
+      || await lookupQuoteIdForAssembly(sb, productId, {
+        department: 'carpentry',
+        assemblyName: job.product_name,
+        quantity: qty,
+      }));
   let materialUsageRows = Array.isArray(meta.material_usage_rows) ? meta.material_usage_rows : [];
   const storeroomIds = Array.isArray(meta.storeroom_location_ids) ? meta.storeroom_location_ids : [];
 

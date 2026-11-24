@@ -245,18 +245,31 @@ export default function ManufactureScreen({
       Alert.alert(tUi('paintingConfirmTitle', locale), tUi('paintingQtyExceedsStock', locale).replace('{max}', String(max)));
       return;
     }
-    setPaintModal(null);
-    setBusyId(assemblyId);
-    try {
-      await sendCarpentryProductToPainting({ assemblyId, productQty: rawNum });
-      emitProductionRefresh('manufacture');
-      await loadList({ fromPull: true });
-      Alert.alert(tUi('paintingConfirmTitle', locale), tUi('paintingDone', locale));
-    } catch (e) {
-      Alert.alert(tUi('paintingFailed', locale), e?.message || tUi('paintingFailed', locale));
-    } finally {
-      setBusyId('');
-    }
+    const send = async () => {
+      setPaintModal(null);
+      setBusyId(assemblyId);
+      try {
+        await sendCarpentryProductToPainting({ assemblyId, productQty: rawNum });
+        emitProductionRefresh('manufacture');
+        await loadList({ fromPull: true });
+        Alert.alert(tUi('paintingConfirmTitle', locale), tUi('paintingDone', locale));
+      } catch (e) {
+        Alert.alert(tUi('paintingFailed', locale), e?.message || tUi('paintingFailed', locale));
+      } finally {
+        setBusyId('');
+      }
+    };
+    Alert.alert(
+      tUi('paintingConfirmTitle', locale),
+      tUi('paintingConfirmBody', locale)
+        .replace('{qty}', String(rawNum))
+        .replace('{name}', String(item.name || ''))
+        .replace('{max}', String(max)),
+      [
+        { text: tUi('cancel', locale), style: 'cancel' },
+        { text: tUi('confirm', locale), onPress: () => { void send(); } },
+      ],
+    );
   };
 
   const renderProductCard = ({ item }) => {

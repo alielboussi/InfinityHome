@@ -335,6 +335,7 @@ const UI_STRINGS = {
   cardQuoteNo: { en: 'Quote #', ar: 'رقم العرض' },
   sourceCustomer: { en: 'Customer order', ar: 'طلب زبون' },
   sourceShowroom: { en: 'Showroom order', ar: 'طلب صالة' },
+  sourceWarehouse: { en: 'Warehouse production', ar: 'إنتاج المستودع' },
   sourceRepair: { en: 'Repair', ar: 'إصلاح' },
   badgeManufacture: { en: 'Production', ar: 'إنتاج' },
   badgeRepair: { en: 'Repair', ar: 'إصلاح' },

@@ -1815,7 +1815,7 @@ async function opCarpentryJobFinish(body, user) {
   const destRaw = String(body.destination || body.finish_destination || body.finishDestination || 'delivery')
     .trim()
     .toLowerCase();
-  const destination = destRaw === 'floor1' ? 'floor1' : 'delivery';
+  const destination = destRaw === 'floor1' ? 'floor1' : destRaw === 'floor2' ? 'floor2' : 'delivery';
   return finishCarpentryProductionJob(sb, {
     jobId,
     userId: user?.id || user?.uid,

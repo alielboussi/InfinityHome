@@ -580,8 +580,20 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
       Alert.alert(tUi('upholsteryJobFinish', locale), warn);
       return;
     }
-    const doneKey = dest === 'floor1' ? 'paintingJobFinishDoneFloor1' : 'paintingJobFinishDoneDelivery';
+    const doneKey = dest === 'floor2'
+      ? 'carpentryManufactureFinishFloor2'
+      : dest === 'floor1'
+        ? 'paintingJobFinishDoneFloor1'
+        : 'paintingJobFinishDoneDelivery';
     Alert.alert(tUi('upholsteryJobFinish', locale), tUi(doneKey, locale));
+  };
+
+  const isManufactureFloor2Job = (job) => {
+    const meta = job?.metadata && typeof job.metadata === 'object' ? job.metadata : {};
+    const hasQuote = Boolean(String(
+      job?.quote_id || meta.quote_id || meta.carpentry_quote_id || '',
+    ).trim());
+    return meta.catalog_manufacture === true || !hasQuote;
   };
 
   const promptJobFinishDisposition = (jobId, preferredStoreroomLocationId) => {
@@ -595,6 +607,7 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
 
   const proceedFinishJob = (job) => {
     const jobId = job.job_id || job.id;
+    const finishManufacture = () => wrapBusy(jobId, () => completeFinishJob(jobId, null, 'floor2'));
     const needsStoreroom = carpentryFinishNeedsStoreroomPick(job);
     if (needsStoreroom) {
       void (async () => {
@@ -607,6 +620,10 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
         setStoreroomFinishJobId(String(jobId));
         setStoreroomPromptVisible(true);
       })();
+      return;
+    }
+    if (isManufactureFloor2Job(job)) {
+      finishManufacture();
       return;
     }
     promptJobFinishDisposition(jobId, null);
@@ -860,8 +877,22 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
           const q = quoteStopTarget;
           setQuoteStopTarget(null);
           if (!q) return;
-          if (key === 'painting') void finishQuoteFromCard(q, { sendToPainting: true });
-          else void finishQuoteFromCard(q, { destination: 'delivery' });
+          Alert.alert(
+            tUi('quoteOrderDispositionTitle', locale),
+            key === 'painting'
+              ? tUi('quoteFinishConfirmPainting', locale)
+              : tUi('quoteFinishConfirmDelivery', locale),
+            [
+              { text: tUi('cancel', locale), style: 'cancel' },
+              {
+                text: tUi('confirm', locale),
+                onPress: () => {
+                  if (key === 'painting') void finishQuoteFromCard(q, { sendToPainting: true });
+                  else void finishQuoteFromCard(q, { destination: 'delivery' });
+                },
+              },
+            ],
+          );
         }}
         onCancel={() => setQuoteStopTarget(null)}
       />
@@ -879,7 +910,14 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
           const jobId = storeroomFinishJobId;
           setStoreroomPromptVisible(false);
           setStoreroomFinishJobId('');
-          if (jobId) promptJobFinishDisposition(jobId, preferredId);
+          if (jobId) {
+            const job = jobs.find((j) => String(j.job_id || j.id) === String(jobId));
+            if (job && isManufactureFloor2Job(job)) {
+              wrapBusy(jobId, () => completeFinishJob(jobId, preferredId, 'floor2'));
+            } else {
+              promptJobFinishDisposition(jobId, preferredId);
+            }
+          }
         }}
       />
     </View>

@@ -63,7 +63,10 @@ function formatQuoteLabel(value) {
 function sourceLabel(row, locale) {
   if (row?._kind === 'repair') return tUi('sourceRepair', locale);
   if (row?.showroom_order === true) return tUi('sourceShowroom', locale);
-  return tUi('sourceCustomer', locale);
+  const hasQuote = Boolean(formatQuoteLabel(row?.quote_number) || String(row?.quote_id || '').trim());
+  const hasCustomer = Boolean(String(row?.customer_name || '').trim());
+  if (row?.customer_order === true || hasQuote || hasCustomer) return tUi('sourceCustomer', locale);
+  return tUi('sourceWarehouse', locale);
 }
 
 function customerDisplay(row, locale) {

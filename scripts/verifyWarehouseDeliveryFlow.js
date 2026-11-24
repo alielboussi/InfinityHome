@@ -439,5 +439,9 @@ assert(
   deliveryQueue.includes('hydrateQuoteCustomerAndNumber'),
   'Delivery Orders must hydrate quote number and customer name',
 );
+assert(
+  deliveryQueue.includes("if (dest !== 'delivery') return null"),
+  'Delivery Orders must list only jobs finished with send to delivery',
+);
 
 console.log('verifyWarehouseDeliveryFlow: ok');

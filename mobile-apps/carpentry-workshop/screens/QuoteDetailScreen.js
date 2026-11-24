@@ -491,8 +491,22 @@ export default function QuoteDetailScreen({ route, navigation }) {
         ]}
         onPick={(key) => {
           setEndDestVisible(false);
-          if (key === 'painting') void finishQuote({ sendToPainting: true });
-          else void finishQuote({ destination: 'delivery' });
+          Alert.alert(
+            tUi('quoteOrderDispositionTitle', locale),
+            key === 'painting'
+              ? tUi('quoteFinishConfirmPainting', locale)
+              : tUi('quoteFinishConfirmDelivery', locale),
+            [
+              { text: tUi('cancel', locale), style: 'cancel' },
+              {
+                text: tUi('confirm', locale),
+                onPress: () => {
+                  if (key === 'painting') void finishQuote({ sendToPainting: true });
+                  else void finishQuote({ destination: 'delivery' });
+                },
+              },
+            ],
+          );
         }}
         onCancel={() => setEndDestVisible(false)}
       />

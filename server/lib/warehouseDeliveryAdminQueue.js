@@ -575,8 +575,7 @@ async function listCompletedJobsAwaitingDriver(sb, table, department) {
     if (String(admin.kind || DELIVERY_ADMIN_KIND.ORDER).toLowerCase() !== DELIVERY_ADMIN_KIND.ORDER) return null;
     if (!String(admin.production_job_id || job.id || '').trim()) return null;
     const dest = String(meta.finish_destination || admin.finish_destination || '').toLowerCase();
-    if (dest === 'floor1') return null;
-    if (dest && dest !== 'delivery') return null;
+    if (dest !== 'delivery') return null;
     const asmId = String(admin.assembly_id || job.assembly_id || '').trim();
     if (!asmId) return null;
     return { job, meta, admin, asmId };
@@ -829,7 +828,13 @@ export async function listOrderDeliveriesForMobile(sb) {
     return true;
   });
   const withQuotes = await attachMissingQuoteIds(sb, unique);
-  return hydrateQuoteCustomerAndNumber(sb, withQuotes);
+  const hydrated = await hydrateQuoteCustomerAndNumber(sb, withQuotes);
+  return hydrated.filter((row) => {
+    if (row.showroom_order === true) return true;
+    const quoteLabel = String(row.quote_number || '').trim();
+    if (quoteLabel && !String(row.customer_name || '').trim()) return false;
+    return true;
+  });
 }
 
 function quoteNumberKey(value) {
