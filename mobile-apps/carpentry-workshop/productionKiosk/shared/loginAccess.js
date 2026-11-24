@@ -1,4 +1,5 @@
 import { API_BASE, getFirebaseIdToken } from './firebase';
+import { fetchWithApiBaseFallback } from './apiBaseFetch';
 import { formatWarehouseMobileApiError } from './warehouseMobileApi';
 
 export async function verifyMobileLoginAccess() {
@@ -8,17 +9,16 @@ export async function verifyMobileLoginAccess() {
   }
 
   const apiBase = String(process.env.EXPO_PUBLIC_API_BASE || API_BASE || '').replace(/\/+$/, '');
-  const url = `${apiBase}/api/auth-profile`;
 
   try {
-    const response = await fetch(url, {
+    const response = await fetchWithApiBaseFallback('/api/auth-profile', {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: 'application/json',
       },
       cache: 'no-store',
-    });
+    }, apiBase);
     const payload = await response.json().catch(() => ({}));
     const apiError = payload?.error;
     const nestedMessage = apiError && typeof apiError === 'object' ? apiError.message : null;

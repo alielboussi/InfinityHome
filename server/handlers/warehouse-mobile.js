@@ -2949,6 +2949,9 @@ async function opPacketNameCheck(body) {
     name,
     existing: clash.name,
     existing_id: clash.id,
+    existing_assembly_id: clash.kind === 'assembly'
+      ? clash.id
+      : (clash.assembly_id || null),
     existing_kind: clash.kind,
     reason: sameFullName ? 'exact_name' : 'base_name_in_use',
     lookup_hint: lookupHint,

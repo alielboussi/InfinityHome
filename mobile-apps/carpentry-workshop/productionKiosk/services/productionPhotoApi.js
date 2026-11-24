@@ -1,4 +1,5 @@
 import { API_BASE, getFirebaseIdToken } from '../shared/firebase';
+import { fetchWithApiBaseFallback } from '../shared/apiBaseFetch';
 import { formatWarehouseMobileApiError } from '../shared/warehouseMobileApi';
 
 const CLIENT_SOURCE = 'warehouse_production_app';
@@ -39,8 +40,7 @@ async function postProductionAiPhotoOnce({
     throw err;
   }
 
-  const url = `${resolveApiBase()}/api/warehouse-production-photo`;
-  const response = await fetch(url, {
+  const response = await fetchWithApiBaseFallback('/api/warehouse-production-photo', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -58,7 +58,7 @@ async function postProductionAiPhotoOnce({
       ...(pendingPortalSetup ? { pending_portal_setup: pendingPortalSetup } : {}),
       ...(alsoFloor2Wip ? { also_floor2_wip: true } : {}),
     }),
-  });
+  }, resolveApiBase());
 
   const rawBody = await response.text();
   let payload = {};

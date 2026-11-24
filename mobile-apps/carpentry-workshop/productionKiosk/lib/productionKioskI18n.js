@@ -124,11 +124,12 @@ const UI_STRINGS = {
   needPreset: { en: 'Choose a product type to build the product name.', ar: 'اختر نوع المنتج لبناء اسم المنتج.' },
   needQty: { en: 'Enter stock quantity (1 or more — one label per unit).', ar: 'أدخل كمية المخزون (1 أو أكثر — ملصق لكل وحدة).' },
   saveFailedTitle: { en: 'Could not save item', ar: 'تعذر حفظ العنصر' },
+  savePhotoFailedTitle: { en: 'Saved without photo', ar: 'حُفظ بدون صورة' },
   createAiPhotoFailedHint: {
-    en: 'AI photo retouch did not finish. Warehouse stock is not updated until retouch succeeds. Tap Retry or discard the draft.',
-    ar: 'لم يكتمل تحسين الصورة بالذكاء الاصطناعي. لا يُحدَّث مخزون المستودع حتى ينجح. اضغط إعادة المحاولة أو تجاهل المسودة.',
+    en: 'The product is already on Floor 1, but the photo did not upload. Tap Retry photo — do not create it again.',
+    ar: 'المنتج موجود في الطابق 1، لكن الصورة لم تُرفع. اضغط إعادة محاولة الصورة — لا تنشئه من جديد.',
   },
-  createAiPhotoRetry: { en: 'Retry AI photo', ar: 'إعادة محاولة الصورة' },
+  createAiPhotoRetry: { en: 'Retry photo', ar: 'إعادة محاولة الصورة' },
   createDiscardDraft: { en: 'Discard draft', ar: 'تجاهل المسودة' },
   createDiscardDraftFailed: { en: 'Could not discard draft.', ar: 'تعذر تجاهل المسودة.' },
   createAiPhotoRetryLost: {
@@ -213,20 +214,8 @@ const UI_STRINGS = {
     ar: 'تخزين في الطابق 1، أم إرسال إلى قائمة التسليم في تطبيق التوصيل؟',
   },
   quoteOrderCarpentryDispositionPrompt: {
-    en: 'Send this customer order to Painting, or send it to Delivery?',
-    ar: 'إرسال طلب الزبون إلى الدهان، أم إرساله للتسليم؟',
-  },
-  quoteFinishConfirmPainting: {
-    en: 'Send this completed order to the Painting app?',
-    ar: 'إرسال هذا الطلب المكتمل إلى تطبيق الدهان؟',
-  },
-  quoteFinishConfirmDelivery: {
-    en: 'Send this completed order to the Delivery app?',
-    ar: 'إرسال هذا الطلب المكتمل إلى تطبيق التسليم؟',
-  },
-  carpentryManufactureFinishFloor2: {
-    en: 'Done — credited on Warehouse Floor 2.',
-    ar: 'تم — أُضيف إلى الطابق 2.',
+    en: 'Credit Floor 1 stock, or send WIP from Floor 2 to the Painting department?',
+    ar: 'إضافة مخزون الطابق 1، أم إرسال WIP من الطابق الثاني إلى قسم الدهانات؟',
   },
   quoteOrderDispositionTitle: { en: 'Finished order', ar: 'الطلب المكتمل' },
   quoteLineProgress: { en: 'Completed', ar: 'مكتمل' },
@@ -989,6 +978,10 @@ const UI_STRINGS = {
   saveFailedConnection: {
     en: 'Save failed. Check your connection and try again.',
     ar: 'فشل الحفظ. تحقق من الاتصال ثم أعد المحاولة.',
+  },
+  saveFailedDns: {
+    en: 'Cannot reach the server (DNS). Switch Wi-Fi or mobile data, then try again.',
+    ar: 'تعذر الوصول إلى الخادم (الشبكة). بدّل الواي فاي أو بيانات الجوال ثم أعد المحاولة.',
   },
   createSaveDataLost: {
     en: 'Save data was lost. Tap Save production item again.',

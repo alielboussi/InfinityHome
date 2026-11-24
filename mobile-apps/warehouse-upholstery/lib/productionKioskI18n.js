@@ -124,11 +124,13 @@ const UI_STRINGS = {
   needPreset: { en: 'Choose a product type to build the product name.', ar: 'اختر نوع المنتج لبناء اسم المنتج.' },
   needQty: { en: 'Enter stock quantity (1 or more — one label per unit).', ar: 'أدخل كمية المخزون (1 أو أكثر — ملصق لكل وحدة).' },
   saveFailedTitle: { en: 'Could not save item', ar: 'تعذر حفظ العنصر' },
+  savePhotoFailedTitle: { en: 'Saved without photo', ar: 'حُفظ بدون صورة' },
   createAiPhotoFailedHint: {
-    en: 'AI photo retouch did not finish. Warehouse stock is not updated until retouch succeeds. Tap Retry or discard the draft.',
-    ar: 'لم يكتمل تحسين الصورة بالذكاء الاصطناعي. لا يُحدَّث مخزون المستودع حتى ينجح. اضغط إعادة المحاولة أو تجاهل المسودة.',
+    en: 'The product is already on Floor 1, but the photo did not upload. Tap Retry photo — do not create it again.',
+    ar: 'المنتج موجود في الطابق 1، لكن الصورة لم تُرفع. اضغط إعادة محاولة الصورة — لا تنشئه من جديد.',
   },
-  createAiPhotoRetry: { en: 'Retry AI photo', ar: 'إعادة محاولة الصورة' },
+  createAiPhotoRetry: { en: 'Retry photo', ar: 'إعادة محاولة الصورة' },
+  createKeepWithoutPhoto: { en: 'Keep without photo', ar: 'إبقاء بدون صورة' },
   createDiscardDraft: { en: 'Discard draft', ar: 'تجاهل المسودة' },
   createDiscardDraftFailed: { en: 'Could not discard draft.', ar: 'تعذر تجاهل المسودة.' },
   createAiPhotoRetryLost: {
@@ -956,6 +958,10 @@ const UI_STRINGS = {
   saveFailedConnection: {
     en: 'Save failed. Check your connection and try again.',
     ar: 'فشل الحفظ. تحقق من الاتصال ثم أعد المحاولة.',
+  },
+  saveFailedDns: {
+    en: 'Cannot reach the server (DNS). Switch Wi-Fi or mobile data, then try again.',
+    ar: 'تعذر الوصول إلى الخادم (الشبكة). بدّل الواي فاي أو بيانات الجوال ثم أعد المحاولة.',
   },
   createSaveDataLost: {
     en: 'Save data was lost. Tap Save production item again.',

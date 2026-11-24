@@ -1,4 +1,5 @@
 import { API_BASE, getFirebaseIdToken } from './firebase';
+import { fetchWithApiBaseFallback } from './apiBaseFetch';
 import { formatWarehouseMobileApiError } from './warehouseMobileApi';
 
 /** Warehouse-catalog mobile only — no AI (use Production app productionPhotoApi for Gemini). */
@@ -28,8 +29,7 @@ async function postCatalogPhotoOnce({ assemblyId, imageBase64, forceReupload }) 
     throw err;
   }
 
-  const url = `${resolveApiBase()}/api/warehouse-catalog-photo`;
-  const response = await fetch(url, {
+  const response = await fetchWithApiBaseFallback('/api/warehouse-catalog-photo', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -44,7 +44,7 @@ async function postCatalogPhotoOnce({ assemblyId, imageBase64, forceReupload }) 
       client_source: CLIENT_SOURCE,
       require_ai_retouch: false,
     }),
-  });
+  }, resolveApiBase());
 
   const rawBody = await response.text();
   let payload = {};

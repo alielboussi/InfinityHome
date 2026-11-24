@@ -1,4 +1,5 @@
 import { API_BASE, getFirebaseIdToken } from './firebase';
+import { fetchWithApiBaseFallback, isDnsOrNetworkFetchError } from './apiBaseFetch';
 
 function resolveApiBase() {
   return String(process.env.EXPO_PUBLIC_API_BASE || API_BASE || '').replace(/\/+$/, '');
@@ -42,8 +43,7 @@ const OFFLINE_RETRY_OPS = new Set([
 ]);
 
 async function dispatchWarehouseMobile(op, body, token) {
-  const url = `${resolveApiBase()}/api/warehouse-mobile`;
-  const response = await fetch(url, {
+  const response = await fetchWithApiBaseFallback('/api/warehouse-mobile', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -51,7 +51,7 @@ async function dispatchWarehouseMobile(op, body, token) {
       Accept: 'application/json',
     },
     body: JSON.stringify({ op, ...body }),
-  });
+  }, resolveApiBase());
 
   const rawBody = await response.text();
   let payload = {};
@@ -139,6 +139,7 @@ export function isLikelyNetworkError(err) {
   if (err.code === 'auth') return false;
   const msg = String(err.message || '').toLowerCase();
   return err.network === true
+    || isDnsOrNetworkFetchError(err)
     || msg.includes('network')
     || msg.includes('failed to fetch')
     || msg.includes('internet');

@@ -68,7 +68,7 @@ export async function findProductionNameClash(sb, proposedName, {
   if (!name) return null;
 
   const [{ data: packets, error: pErr }, { data: assemblies, error: aErr }] = await Promise.all([
-    sb.from('warehouse_packets').select('id, name'),
+    sb.from('warehouse_packets').select('id, name, assembly_id'),
     sb.from('warehouse_assemblies').select('id, name'),
   ]);
   if (pErr) throw new Error(pErr.message || 'Failed to validate packet names');

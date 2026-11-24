@@ -232,6 +232,21 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
     return false;
   };
 
+  const assemblyIdFromNameCheck = (check) => {
+    if (!check?.taken || String(check.reason || '') !== 'exact_name') return '';
+    if (String(check.existing_kind || '') === 'assembly') {
+      return String(check.existing_assembly_id || check.existing_id || '').trim();
+    }
+    return String(check.existing_assembly_id || '').trim();
+  };
+
+  const openPhotoRetry = (message) => {
+    setPhotoRetryMessage(String(message || '').trim() || tUi('createAiPhotoFailedHint', locale));
+    setPhotoRetryOpen(true);
+    setError('');
+    setSuccess('');
+  };
+
   const onSelectPreset = (value) => {
     if (!baseNameEn.trim()) {
       setError(tUi('needBaseName', locale));
@@ -282,7 +297,14 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
   };
 
   const showSaveFailure = (message) => {
-    const msg = String(message || '').trim() || tUi('saveFailedGeneric', locale);
+    const raw = String(message || '').trim();
+    const lower = raw.toLowerCase();
+    const msg = (lower.includes('unknownhost')
+      || lower.includes('unable to resolve host')
+      || lower.includes('no address associated')
+      || lower.includes('cannot reach the server (dns)'))
+      ? tUi('saveFailedDns', locale)
+      : (raw || tUi('saveFailedGeneric', locale));
     setError(msg);
     Alert.alert(tUi('saveFailedTitle', locale), msg);
   };
@@ -483,26 +505,40 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
           labelCopies: pending.qtyNum,
           packet: { id: pending.resumeAssemblyId, assembly_id: pending.resumeAssemblyId },
         };
-      } else {
-        const available = await ensureProductNameAvailable(pending.name);
-        if (!available) return;
-        setAiPhotoStatus(tUi('savePhaseCreatingProduct', locale));
-        parsed = await createProductionProductOnly({
-          name: pending.name,
-          warehouseLocationId: pending.warehouseLocationId,
-          initialQuantity: pending.qtyNum,
-          dimLength: pending.dimLength,
-          dimWidth: pending.dimWidth,
-          dimHeight: pending.dimHeight,
-          preset: pending.preset,
-        });
-        pendingSaveRef.current = {
-          ...pending,
-          resumeAssemblyId: parsed.assemblyId,
-          pendingLabelPrint: parsed.pendingLabelPrint || null,
-          pendingPortalSetup: portalSetupWithQty(pending, parsed.pendingPortalSetup || { portal_catalog: 'upholstery' }),
-        };
-      }
+        } else {
+          const { checkProductionProductName } = await import('../services/productionApi');
+          const check = await checkProductionProductName(pending.name);
+          const existingId = assemblyIdFromNameCheck(check);
+          if (existingId) {
+            parsed = {
+              assemblyId: existingId,
+              pendingLabelPrint: pending.pendingLabelPrint || null,
+              labelCopies: pending.qtyNum,
+              packet: { id: existingId, assembly_id: existingId },
+            };
+            pendingSaveRef.current = { ...pending, resumeAssemblyId: existingId };
+          } else if (check?.taken) {
+            showSaveFailure(formatProductionNameClashMessage(check, tUi('duplicateName', locale)));
+            return;
+          } else {
+            setAiPhotoStatus(tUi('savePhaseCreatingProduct', locale));
+            parsed = await createProductionProductOnly({
+              name: pending.name,
+              warehouseLocationId: pending.warehouseLocationId,
+              initialQuantity: pending.qtyNum,
+              dimLength: pending.dimLength,
+              dimWidth: pending.dimWidth,
+              dimHeight: pending.dimHeight,
+              preset: pending.preset,
+            });
+            pendingSaveRef.current = {
+              ...pending,
+              resumeAssemblyId: parsed.assemblyId,
+              pendingLabelPrint: parsed.pendingLabelPrint || null,
+              pendingPortalSetup: portalSetupWithQty(pending, parsed.pendingPortalSetup || { portal_catalog: 'upholstery' }),
+            };
+          }
+        }
 
       setAiPhotoStatus(tUi('photoProcessing', locale));
       const photoPayload = await attachProductionProductPhoto({
@@ -536,12 +572,24 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
     } catch (err) {
       const msg = String(err?.message || '').trim()
         || tUi('createAiPhotoFailedHint', locale);
-      const resumeId = String(pendingSaveRef.current?.resumeAssemblyId || '').trim();
+      let resumeId = String(pendingSaveRef.current?.resumeAssemblyId || '').trim();
+      if (!resumeId && pendingSaveRef.current?.name) {
+        try {
+          const { checkProductionProductName } = await import('../services/productionApi');
+          const check = await checkProductionProductName(pendingSaveRef.current.name);
+          resumeId = assemblyIdFromNameCheck(check);
+          if (resumeId) {
+            pendingSaveRef.current = {
+              ...pendingSaveRef.current,
+              resumeAssemblyId: resumeId,
+            };
+          }
+        } catch {
+          /* lookup failed — still show retry if we already have an id */
+        }
+      }
       if (resumeId) {
-        setPhotoRetryMessage(msg);
-        setPhotoRetryOpen(true);
-        setError('');
-        setSuccess('');
+        openPhotoRetry(tUi('createAiPhotoFailedHint', locale));
         return;
       }
       if (msg.toLowerCase().includes('already exists')) {
@@ -793,7 +841,7 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
     <Modal visible={photoRetryOpen} transparent animationType="fade" onRequestClose={() => {}}>
       <View style={styles.busyBackdrop}>
         <View style={styles.busyCard}>
-          <Text style={styles.busyTitle}>{tUi('saveFailedTitle', locale)}</Text>
+          <Text style={styles.busyTitle}>{tUi('savePhotoFailedTitle', locale)}</Text>
           <Text style={styles.busyText}>
             {textForDisplay(photoRetryMessage || tUi('createAiPhotoFailedHint', locale), tUi('createAiPhotoFailedHint', locale))}
           </Text>
@@ -807,6 +855,18 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
             ) : (
               <Text style={[kiosk.btnText, kiosk.btnPrimaryText]}>{tUi('createAiPhotoRetry', locale)}</Text>
             )}
+          </Pressable>
+          <Pressable
+            style={[kiosk.btn, styles.retryBtn]}
+            onPress={() => {
+              pendingPhotoRef.current = null;
+              setPhotoRetryOpen(false);
+              setPhotoRetryMessage('');
+              setSuccess(tUi('createKeepWithoutPhoto', locale));
+            }}
+            disabled={saving}
+          >
+            <Text style={kiosk.btnText}>{tUi('createKeepWithoutPhoto', locale)}</Text>
           </Pressable>
           <Pressable
             style={[kiosk.btn, styles.retryBtn]}

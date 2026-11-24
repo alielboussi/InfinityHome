@@ -282,7 +282,14 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
   };
 
   const showSaveFailure = (message) => {
-    const msg = String(message || '').trim() || tUi('saveFailedGeneric', locale);
+    const raw = String(message || '').trim();
+    const lower = raw.toLowerCase();
+    const msg = (lower.includes('unknownhost')
+      || lower.includes('unable to resolve host')
+      || lower.includes('no address associated')
+      || lower.includes('cannot reach the server (dns)'))
+      ? tUi('saveFailedDns', locale)
+      : (raw || tUi('saveFailedGeneric', locale));
     setError(msg);
     Alert.alert(tUi('saveFailedTitle', locale), msg);
   };

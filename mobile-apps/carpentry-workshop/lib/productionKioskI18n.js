@@ -213,20 +213,8 @@ const UI_STRINGS = {
     ar: 'تخزين في الطابق 1، أم إرسال إلى قائمة التسليم في تطبيق التوصيل؟',
   },
   quoteOrderCarpentryDispositionPrompt: {
-    en: 'Send this customer order to Painting, or send it to Delivery?',
-    ar: 'إرسال طلب الزبون إلى الدهان، أم إرساله للتسليم؟',
-  },
-  quoteFinishConfirmPainting: {
-    en: 'Send this completed order to the Painting app?',
-    ar: 'إرسال هذا الطلب المكتمل إلى تطبيق الدهان؟',
-  },
-  quoteFinishConfirmDelivery: {
-    en: 'Send this completed order to the Delivery app?',
-    ar: 'إرسال هذا الطلب المكتمل إلى تطبيق التسليم؟',
-  },
-  carpentryManufactureFinishFloor2: {
-    en: 'Done — credited on Warehouse Floor 2.',
-    ar: 'تم — أُضيف إلى الطابق 2.',
+    en: 'Credit Floor 1 stock, or send WIP from Floor 2 to the Painting department?',
+    ar: 'إضافة مخزون الطابق 1، أم إرسال WIP من الطابق الثاني إلى قسم الدهانات؟',
   },
   quoteOrderDispositionTitle: { en: 'Finished order', ar: 'الطلب المكتمل' },
   quoteLineProgress: { en: 'Completed', ar: 'مكتمل' },
@@ -989,6 +977,10 @@ const UI_STRINGS = {
   saveFailedConnection: {
     en: 'Save failed. Check your connection and try again.',
     ar: 'فشل الحفظ. تحقق من الاتصال ثم أعد المحاولة.',
+  },
+  saveFailedDns: {
+    en: 'Cannot reach the server (DNS). Switch Wi-Fi or mobile data, then try again.',
+    ar: 'تعذر الوصول إلى الخادم (الشبكة). بدّل الواي فاي أو بيانات الجوال ثم أعد المحاولة.',
   },
   createSaveDataLost: {
     en: 'Save data was lost. Tap Save production item again.',

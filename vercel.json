@@ -20,7 +20,7 @@
   },
   "redirects": [
     {
-      "source": "/(.*)",
+      "source": "/((?!api/).*)",
       "has": [
         { "type": "host", "value": "infinity-home-pi.vercel.app" }
       ],
