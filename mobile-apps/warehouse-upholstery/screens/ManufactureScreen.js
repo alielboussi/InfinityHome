@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
 import ProductionQrScanModal from '../components/ProductionQrScanModal';
 import { kiosk } from '../components/kioskStyles';
-import { kioskScreenEdgesSafe } from '../lib/kioskLayout';
+import { kioskFooterBottomPad, kioskScreenEdgesSafe } from '../lib/kioskLayout';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi } from '../lib/productionKioskI18n';
 import {
@@ -338,7 +338,9 @@ export default function ManufactureScreen({
         columnWrapperStyle={filteredProducts.length ? styles.gridRow : undefined}
         refreshing={refreshing}
         onRefresh={() => loadList({ fromPull: true })}
-        contentContainerStyle={filteredProducts.length === 0 ? styles.listEmpty : styles.gridContent}
+        contentContainerStyle={filteredProducts.length === 0
+          ? styles.listEmpty
+          : [styles.gridContent, { paddingBottom: kioskFooterBottomPad(insets) + 40 }]}
         renderItem={renderProductCard}
         keyboardShouldPersistTaps="handled"
         initialNumToRender={6}

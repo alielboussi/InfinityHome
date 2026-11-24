@@ -17,7 +17,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
 import { kiosk, KIOSK_ICON_BLUE_ON_DARK } from '../components/kioskStyles';
-import { kioskScreenEdgesSafe } from '../lib/kioskLayout';
+import { kioskFooterBottomPad, kioskScreenEdgesSafe } from '../lib/kioskLayout';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { isJobAwaitingDelivery } from '../shared/lib/deliveryAdminDisplayStatus';
 import { tUi, textForDisplay } from '../lib/productionKioskI18n';
@@ -733,7 +733,9 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
             setPullRefreshing(false);
           }
         }}
-        contentContainerStyle={combinedItems.length === 0 ? styles.listEmpty : { paddingBottom: 24 }}
+        contentContainerStyle={combinedItems.length === 0
+          ? styles.listEmpty
+          : { paddingBottom: kioskFooterBottomPad(insets) + 40 }}
         renderItem={({ item }) => (
           item._kind === 'repair' ? (
             <WorkshopRepairInboxCard
@@ -764,7 +766,7 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
                 jobId: String(q.quote_id || ''),
                 productionRoute: 'upholstery',
                 initialLines: q.manual_material_lines || [],
-                allowFloor2WipDeduction: true,
+                allowFloor2WipDeduction: false,
               })}
             />
           ) : (
@@ -842,6 +844,9 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
         jobId={materialsTarget?.jobId || ''}
         productionRoute={materialsTarget?.productionRoute || ''}
         initialLines={materialsTarget?.initialLines || []}
+        allowFloor2WipDeduction={materialsTarget?.jobKind === 'quote'
+          ? false
+          : materialsTarget?.allowFloor2WipDeduction !== false}
         onClose={() => setMaterialsTarget(null)}
         onSaved={() => {
           setMaterialsTarget(null);
@@ -905,8 +910,9 @@ const styles = StyleSheet.create({
     gap: 24,
     marginTop: 4,
     marginBottom: 8,
+    paddingBottom: 12,
   },
-  iconBtn: { padding: 4 },
+  iconBtn: { padding: 12, minWidth: 64, minHeight: 64, alignItems: 'center', justifyContent: 'center' },
   unitBlock: { marginBottom: 12 },
   unitHeader: { fontSize: 15, fontWeight: '800', color: theme.text, marginBottom: 4 },
   unitHeaderMuted: { fontSize: 14, fontWeight: '600', color: theme.textMuted },

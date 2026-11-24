@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
 import { kiosk } from '../components/kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
@@ -273,10 +273,10 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
     setEndConfirmVisible(true);
   };
 
-  const bottomPad = kioskFooterBottomPad(insets) + 32;
+  const bottomPad = kioskFooterBottomPad(insets) + 48;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
+    <View style={styles.safe}>
     <ScrollView
       style={[kiosk.screen, styles.scroll]}
       contentContainerStyle={[kioskScreenEdges(insets, 0), { paddingBottom: bottomPad }]}
@@ -354,7 +354,7 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
       ) : null}
       {!completed && quote.sent_to_production_at && productionLineSet !== 'floor2_wip' ? (
         <Text style={[styles.materialsHint, { textAlign }]}>
-          {tUi('quoteOrderMaterialsFloor2Hint', locale)}
+          {tUi('quoteOrderMaterialsFloor1Hint', locale)}
         </Text>
       ) : null}
       <Text style={[kiosk.label, styles.section, { textAlign }]}>{tUi('quoteOrderLines', locale)}</Text>
@@ -449,14 +449,14 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
       textAlign={textAlign}
       tUi={tUi}
       locale={locale}
-      choices={[
-        { key: 'floor1', label: tUi('quoteLineHandoffFloor1', locale) },
-        { key: 'delivery', label: tUi('quoteLineHandoffDelivery', locale) },
-      ]}
-      onPick={(key) => {
-        setEndDestVisible(false);
-        void finishQuoteWithDestination(key === 'floor1' ? 'floor1' : 'delivery');
-      }}
+        choices={[
+          { key: 'floor1', label: tUi('quoteLineHandoffFloor1', locale) },
+          { key: 'delivery', label: tUi('quoteLineHandoffDelivery', locale) },
+        ]}
+        onPick={(key) => {
+          setEndDestVisible(false);
+          void finishQuoteWithDestination(key === 'floor1' ? 'floor1' : 'delivery');
+        }}
       onCancel={() => setEndDestVisible(false)}
     />
     <ProductionJobMaterialsModal
@@ -474,7 +474,7 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
         await reloadQuote();
       }}
     />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -487,9 +487,9 @@ const styles = StyleSheet.create({
   timerBox: { marginVertical: 16, padding: 16, backgroundColor: theme.surface, borderRadius: 12 },
   timerLabel: { color: theme.textMuted },
   timer: { color: theme.primary, fontSize: 28, fontWeight: '700', marginTop: 8, textAlign: 'center' },
-  actionBtn: { alignSelf: 'stretch', marginBottom: 8 },
-  orderControlRow: { flexDirection: 'row', gap: 10, marginBottom: 8 },
-  orderControlBtn: { flex: 1, alignSelf: 'stretch' },
+  actionBtn: { alignSelf: 'stretch', marginBottom: 8, minHeight: 52, paddingVertical: 14 },
+  orderControlRow: { flexDirection: 'row', gap: 10, marginBottom: 16, paddingBottom: 8 },
+  orderControlBtn: { flex: 1, alignSelf: 'stretch', minHeight: 52, paddingVertical: 14 },
   pauseBtn: { backgroundColor: '#334155' },
   materialsHint: { color: theme.textMuted, fontSize: 13, marginBottom: 12, lineHeight: 18 },
   danger: { backgroundColor: '#7f1d1d' },

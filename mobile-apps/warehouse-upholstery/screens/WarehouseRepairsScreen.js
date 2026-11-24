@@ -14,7 +14,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
 import { kiosk, KIOSK_ICON_BLUE_ON_DARK } from '../components/kioskStyles';
-import { kioskScreenEdgesSafe } from '../lib/kioskLayout';
+import { kioskFooterBottomPad, kioskScreenEdgesSafe } from '../lib/kioskLayout';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi, textForDisplay } from '../lib/productionKioskI18n';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
@@ -273,7 +273,7 @@ export default function WarehouseRepairsScreen({
         <FlatList
           data={rows}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, { paddingBottom: kioskFooterBottomPad(insets) + 40 }]}
           initialNumToRender={6}
           maxToRenderPerBatch={6}
           windowSize={7}
@@ -340,7 +340,7 @@ const styles = StyleSheet.create({
     color: '#92400e',
     marginBottom: 6,
   },
-  iconRow: { flexDirection: 'row', justifyContent: 'center', gap: 20, marginTop: 16 },
-  iconBtn: { alignItems: 'center' },
+  iconRow: { flexDirection: 'row', justifyContent: 'center', gap: 20, marginTop: 16, paddingBottom: 12 },
+  iconBtn: { alignItems: 'center', padding: 12, minWidth: 64, minHeight: 64, justifyContent: 'center' },
   hint: { color: theme.textMuted, marginTop: 10, fontSize: 13 },
 });

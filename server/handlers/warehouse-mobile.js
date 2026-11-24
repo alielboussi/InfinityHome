@@ -2009,9 +2009,14 @@ async function opProductionQuoteComplete(body, user) {
   const sb = getService();
   const { completeQuoteProductionOrder } = await import('../lib/quoteProductionRouting.js');
   const destRaw = String(body.destination || body.finish_destination || body.finishDestination || '').trim().toLowerCase();
-  const destination = destRaw === 'floor1' ? 'floor1' : 'delivery';
+  const destination = destRaw === 'floor1'
+    ? 'floor1'
+    : (destRaw === 'labels' || destRaw === 'label' || destRaw === 'print_labels' || destRaw === 'print-label'
+      ? 'labels'
+      : 'delivery');
   const sendToPainting = body.send_to_painting === true || body.sendToPainting === true;
   const deferDeliveryQueue = destination === 'floor1'
+    || destination === 'labels'
     || body.defer_delivery_queue === true
     || body.deferDeliveryQueue === true
     || sendToPainting;
@@ -2231,11 +2236,14 @@ async function opProductionFloor2ManufacturePush(body, user) {
   return result;
 }
 
-async function opProductionStoreroomMaterialsList(user) {
+async function opProductionStoreroomMaterialsList(user, body = {}) {
   await assertProductionKioskUser(user);
   const sb = getService();
   const { listProductionStoreroomMaterials } = await import('../lib/productionJobMaterials.js');
-  return listProductionStoreroomMaterials(sb);
+  return listProductionStoreroomMaterials(sb, {
+    includeFloor1Finished: body?.include_floor1_finished === true
+      || body?.includeFloor1Finished === true,
+  });
 }
 
 async function opProductionJobMaterialsSave(body, user) {
@@ -5733,7 +5741,7 @@ export default async function handler(req, res) {
         result = await opProductionFloor2ManufacturePush(body, user);
         break;
       case 'production-storeroom-materials-list':
-        result = await opProductionStoreroomMaterialsList(user);
+        result = await opProductionStoreroomMaterialsList(user, body);
         break;
       case 'production-job-materials-save':
         result = await opProductionJobMaterialsSave(body, user);

@@ -1,6 +1,14 @@
 import { Platform } from 'react-native';
 
-const ANDROID_NAV_MIN = 56;
+const ANDROID_NAV_MIN = 72;
+export const KIOSK_SCROLL_EXTRA_BOTTOM = 28;
+
+/** Space reserved for the Android 3-button / Samsung nav bar (often reported as 0). */
+export function kioskAndroidNavReserve(insets) {
+  const reported = Number(insets?.bottom) || 0;
+  if (Platform.OS === 'android') return Math.max(reported, ANDROID_NAV_MIN);
+  return Math.max(reported, 16);
+}
 
 /** Scroll content padding (use with KioskStickyFooter for primary actions). */
 export function kioskScreenEdges(insets, extraBottom = 16) {
@@ -18,13 +26,17 @@ export function kioskScreenEdgesSafe(insets, extraBottom = 8) {
   };
 }
 
-/** Bottom inset for footers when SafeArea reports 0 on Android. */
-export function kioskFooterBottomPad(insets) {
-  const reported = insets?.bottom ?? 0;
-  if (Platform.OS === 'android') {
-    return Math.max(reported, ANDROID_NAV_MIN);
-  }
-  return Math.max(reported, 16);
+/**
+ * Extra gap above flow buttons. Android nav chrome is reserved by UpholsterySafeFrame in App.js
+ * so this is not the full nav height (avoids double padding).
+ */
+export function kioskFooterBottomPad(_insets) {
+  return 16;
+}
+
+/** Modals sit above the window (outside UpholsterySafeFrame) — include the nav reserve. */
+export function kioskModalBottomPad(insets) {
+  return kioskAndroidNavReserve(insets) + 12;
 }
 
 export function kioskTextAlign(locale) {

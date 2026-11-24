@@ -22,6 +22,7 @@ import {
   expandWarehouseSkuMatchKeys,
   normalizeWarehouseProductSku,
 } from '../../src/utils/warehouseScanResolver.js';
+import { WAREHOUSE_FACTORY_LOCATION_ID } from '../../src/constants/warehouseShowroomLocations.js';
 
 const ASSEMBLIES = 'warehouse_assemblies';
 const ASSEMBLY_INVENTORY = 'warehouse_assembly_inventory';
@@ -297,12 +298,25 @@ function allocateAcrossWarehouses(needQty, qtyByLocationId, locationOrder) {
   return moves;
 }
 
-export async function listProductionStoreroomMaterials(sb) {
+export function quoteMaterialLineIsFloor1Finished(row, floor1LocationId = WAREHOUSE_FACTORY_LOCATION_ID) {
+  const loc = String(row?.warehouse_location_id || '').trim();
+  return Boolean(loc && loc === String(floor1LocationId || WAREHOUSE_FACTORY_LOCATION_ID));
+}
+
+export function quoteUsesFloor1FinishedStock(meta, floor1LocationId = WAREHOUSE_FACTORY_LOCATION_ID) {
+  if (meta?.floor1_order_fulfillment === true) return true;
+  return (meta?.manual_material_lines || []).some(
+    (row) => quoteMaterialLineIsFloor1Finished(row, floor1LocationId),
+  );
+}
+
+export async function listProductionStoreroomMaterials(sb, { includeFloor1Finished = false } = {}) {
   const storeroomLocs = await resolveCarpentryStoreroomLocations(sb);
   if (!storeroomLocs.length) {
     return { materials: [], storerooms_missing: true };
   }
 
+  const floor1Id = String(WAREHOUSE_FACTORY_LOCATION_ID);
   const locIds = storeroomLocs.map((l) => String(l.id));
   const [{ data: assemblies, error: aErr }, { data: invRows, error: invErr }, uomRows] = await Promise.all([
     sb.from(ASSEMBLIES).select('id, name, family_sku, metadata'),
@@ -350,15 +364,62 @@ export async function listProductionStoreroomMaterials(sb) {
   const materials = mergeMaterialsByFamilySku([...byAid.values()])
     .filter(isStoreroomMaterialInStock)
     .sort((a, b) => a.name.localeCompare(b.name));
+
+  const storerooms = storeroomLocs.map((loc, i) => ({
+    id: String(loc.id),
+    name: String(loc.name || ''),
+    label: CARPENTRY_WAREHOUSE_NAMES[i] || String(loc.name || ''),
+  }));
+
+  if (includeFloor1Finished) {
+    const { data: floorInv, error: floorErr } = await sb
+      .from(ASSEMBLY_INVENTORY)
+      .select('assembly_id, location_id, quantity')
+      .eq('location_id', floor1Id);
+    if (floorErr) throw new Error(floorErr.message || 'Failed to load Floor 1 stock');
+    const qtyByAid = new Map();
+    (floorInv || []).forEach((r) => {
+      const q = Math.max(0, Number(r.quantity) || 0);
+      if (q <= 0 || !r.assembly_id) return;
+      qtyByAid.set(String(r.assembly_id), (qtyByAid.get(String(r.assembly_id)) || 0) + q);
+    });
+    const floor1Rows = [];
+    for (const asm of assemblies || []) {
+      if (!asm?.id || isStoreroomMaterialAssembly(asm)) continue;
+      const aid = String(asm.id);
+      const q = qtyByAid.get(aid) || 0;
+      if (q <= 0) continue;
+      floor1Rows.push({
+        id: aid,
+        assembly_id: aid,
+        name: String(asm.name || aid).trim(),
+        family_sku: String(asm.family_sku || '').trim(),
+        uom: 'ea',
+        uom_label: 'ea',
+        quantity: q,
+        floor1_finished: true,
+        locations: [{
+          location_id: floor1Id,
+          location_name: 'Warehouse Floor 1',
+          quantity: q,
+        }],
+      });
+    }
+    floor1Rows.sort((a, b) => a.name.localeCompare(b.name));
+    materials.push(...floor1Rows);
+    storerooms.push({
+      id: floor1Id,
+      name: 'Warehouse Floor 1',
+      label: 'Warehouse Floor 1',
+    });
+  }
+
   return {
     materials,
     uom_options: materialUomSelectOptions(uomRows || []),
     storeroom_labels: CARPENTRY_WAREHOUSE_NAMES,
-    storerooms: storeroomLocs.map((loc, i) => ({
-      id: String(loc.id),
-      name: String(loc.name || ''),
-      label: CARPENTRY_WAREHOUSE_NAMES[i] || String(loc.name || ''),
-    })),
+    storerooms,
+    floor1_location_id: includeFloor1Finished ? floor1Id : null,
   };
 }
 
@@ -449,6 +510,7 @@ export async function saveProductionJobMaterials(sb, {
 }) {
   const kind = String(jobKind || '').trim().toLowerCase();
   const quoteRoute = kind === 'quote' ? normalizeProductionRoute(productionRoute) : '';
+  const floor1LocationId = String(WAREHOUSE_FACTORY_LOCATION_ID);
   let floor2LocationId = '';
   if (quoteRoute === 'carpentry' || quoteRoute === 'upholstery') {
     const { data: locRows, error: locErr } = await sb.from('locations').select('id, name');
@@ -530,6 +592,29 @@ export async function saveProductionJobMaterials(sb, {
       if (kind === 'quote' && isFloor2Line) {
         throw new Error('Floor 2 WIP cannot be deducted as job materials. Start production on the Floor 2 card and mark line qty ready.');
       }
+      const isFloor1Line = lineLoc === floor1LocationId;
+      if (isFloor1Line) {
+        if (kind !== 'quote') {
+          throw new Error('Floor 1 finished products can only be used on Hassan quote orders.');
+        }
+        const have = await loadAssemblyInventoryQty(sb, aid, floor1LocationId);
+        if (have + 0.000001 < delta) {
+          throw new Error('Insufficient Floor 1 stock for this product');
+        }
+        await adjustAssemblyInventory(sb, aid, floor1LocationId, -delta);
+        usageRows.push({
+          material_assembly_id: aid,
+          warehouse_location_id: floor1LocationId,
+          quantity: delta,
+          uom: lineMeta?.uom || 'ea',
+          name: String(lineMeta?.name || '').trim(),
+          family_sku: String(lineMeta?.family_sku || '').trim(),
+          uom_label: String(lineMeta?.uom_label || '').trim(),
+          storeroom_label: String(lineMeta?.storeroom_label || '').trim() || 'Warehouse Floor 1',
+          source: 'floor1_finished',
+        });
+        continue;
+      }
       if (isFloor2Line) {
         const have = await loadAssemblyInventoryQty(sb, aid, floor2LocationId);
         if (have + 0.000001 < delta) {
@@ -606,11 +691,13 @@ export async function saveProductionJobMaterials(sb, {
 
   const enrichedLines = await enrichManualMaterialLines(sb, desired);
 
+  const usedFloor1 = desired.some((row) => quoteMaterialLineIsFloor1Finished(row, floor1LocationId));
   const nextMeta = {
     ...meta,
     manual_material_lines: enrichedLines,
     material_usage_rows: mergedUsage,
     storeroom_location_ids: storeroomLocs.map((l) => l.id).filter(Boolean),
+    floor1_order_fulfillment: usedFloor1,
   };
 
   const now = new Date().toISOString();
@@ -644,6 +731,9 @@ export async function saveProductionJobMaterials(sb, {
   }
   if (floor2LocationId) {
     await recomputeWarehouseLocationStockServer(sb, floor2LocationId);
+  }
+  if (usedFloor1) {
+    await recomputeWarehouseLocationStockServer(sb, floor1LocationId);
   }
 
   return {

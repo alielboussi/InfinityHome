@@ -187,6 +187,10 @@ const UI_STRINGS = {
     en: 'Storeroom materials plus in-stock Floor 2 raw WIP (scan SKU or search).',
     ar: 'مواد المستودع بالإضافة إلى خام WIP المتوفّر في الطابق 2 (امسح SKU أو ابحث).',
   },
+  quoteOrderMaterialsFloor1Hint: {
+    en: 'Scan a finished Floor 1 product to send this Hassan order from stock. Floor 1 is deducted on save; the order still goes to Delivery with the customer details (unlike Floor 1 direct delivery).',
+    ar: 'امسح منتجاً جاهزاً من الطابق 1 لإرسال طلب حسن من المخزون. يُخصم من الطابق 1 عند الحفظ، ويبقى الطلب في التوصيل مع بيانات الزبون (بخلاف التسليم المباشر من الطابق 1).',
+  },
   quoteOrderMaterialsHint: {
     en: 'Open Materials to pick items, type a barcode, or scan — storeroom is deducted when you save.',
     ar: 'افتح المواد لاختيار الأصناف أو إدخال/مسح الباركود — يُخصم من المخزن عند الحفظ.',
@@ -203,8 +207,8 @@ const UI_STRINGS = {
   quoteLineHandoffDelivery: { en: 'Send to delivery', ar: 'إرسال للتسليم' },
   quoteLineHandoffFloor1: { en: 'Floor 1 stock', ar: 'مخزون الطابق 1' },
   quoteOrderDispositionPrompt: {
-    en: 'Store on Floor 1, or send to the Delivery app orders queue?',
-    ar: 'تخزين في الطابق 1، أم إرسال إلى قائمة التسليم في تطبيق التوصيل؟',
+    en: 'Store on Floor 1 (customer labels print automatically), or send to Delivery?',
+    ar: 'تخزين في الطابق 1 (تُطبع ملصقات الزبون تلقائياً)، أم إرسال إلى التوصيل؟',
   },
   quoteOrderDispositionTitle: { en: 'Finished order', ar: 'الطلب المكتمل' },
   quoteLineProgress: { en: 'Completed', ar: 'مكتمل' },

@@ -7,6 +7,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { kioskModalBottomPad } from '../../lib/kioskLayout';
 import { theme } from '../theme';
 
 const REQUIRED_OK = 'Ok';
@@ -45,11 +47,13 @@ export default function ConfirmTypeOkModal({
     onConfirm?.();
   };
 
+  const insets = useSafeAreaInsets();
+
   if (!visible) return null;
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={close}>
-      <Pressable style={styles.backdrop} onPress={close}>
+      <Pressable style={[styles.backdrop, { paddingBottom: kioskModalBottomPad(insets) }]} onPress={close}>
         <Pressable style={styles.card} onPress={(e) => e.stopPropagation()}>
           <Text style={[styles.title, { textAlign }]}>{title}</Text>
           {message ? (

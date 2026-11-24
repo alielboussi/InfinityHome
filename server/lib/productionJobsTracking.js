@@ -46,7 +46,8 @@ function quoteOrderFlowStatus(routing, run) {
   const meta = routing?.metadata && typeof routing.metadata === 'object' ? routing.metadata : {};
   const deptWord = productionDepartmentLabel(routing?.route);
   if (routing?.completed_at) {
-    if (meta.pending_floor1_credit?.assembly_id || meta.floor1_awaiting_hassan === true) {
+    const floor1Fulfill = meta.floor1_order_fulfillment === true;
+    if (!floor1Fulfill && (meta.pending_floor1_credit?.assembly_id || meta.floor1_awaiting_hassan === true)) {
       return 'Awaiting Floor 1 approval';
     }
     const stage = deliveryAdminStage(meta);
@@ -195,8 +196,10 @@ async function listQuoteOrdersForTracking(sb) {
       timer_started_at: run?.started_at || null,
       started_at: routing.accepted_at || run?.started_at || routing.sent_to_production_at,
       completed_at: routing.completed_at || run?.completed_at || null,
-      pending_floor1_credit: Boolean(meta.pending_floor1_credit?.assembly_id),
-      floor1_awaiting_hassan: meta.floor1_awaiting_hassan === true,
+      pending_floor1_credit: Boolean(meta.pending_floor1_credit?.assembly_id)
+        && meta.floor1_order_fulfillment !== true,
+      floor1_awaiting_hassan: meta.floor1_awaiting_hassan === true
+        && meta.floor1_order_fulfillment !== true,
       production_locked: meta.production_locked === true || Boolean(routing.completed_at),
     });
   }

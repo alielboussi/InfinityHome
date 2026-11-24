@@ -35,6 +35,47 @@ export function normalizeProductionRoute(raw) {
   return null;
 }
 
+export function normalizeQuoteFinishDestination(raw) {
+  const v = String(raw || 'delivery').trim().toLowerCase();
+  if (v === 'floor1') return 'floor1';
+  if (v === 'labels' || v === 'label' || v === 'print_labels' || v === 'print-label') return 'labels';
+  return 'delivery';
+}
+
+export async function printQuoteOrderLineLabels(sb, {
+  lines,
+  quoteNumber,
+  customerName,
+  customerPhone,
+  qtyFallback = 1,
+  printedBy = 'Floor 1 stock',
+}) {
+  const { enqueueWarehouseProductionLabelJob } = await import('./productionLabelPrint.js');
+  const quoteNo = String(quoteNumber || '').trim();
+  const named = (lines || []).filter((line) => String(line?.name || '').trim());
+  const jobs = named.length
+    ? named.map((line) => ({
+      name: String(line.name).trim(),
+      qty: Math.max(1, Math.floor(Number(line.quantity) || qtyFallback || 1)),
+    }))
+    : (quoteNo ? [{ name: quoteNo, qty: Math.max(1, Math.floor(Number(qtyFallback) || 1)) }] : []);
+  let lastId = null;
+  for (const job of jobs) {
+    lastId = await enqueueWarehouseProductionLabelJob(sb, {
+      name: job.name,
+      sku: quoteNo || job.name,
+      qty: job.qty,
+      printedBy,
+      source: 'quote_production_complete',
+      printedAt: new Date(),
+      customerName,
+      customerPhone,
+      quoteNumber: quoteNo || null,
+    });
+  }
+  return lastId;
+}
+
 async function loadAssemblyInventoryQty(sb, assemblyId, locationId) {
   const { data } = await sb
     .from(ASSEMBLY_INVENTORY)
@@ -439,6 +480,7 @@ export async function listProductionQuotesForRoute(sb, route, { limit = 100 } = 
         manual_material_lines: Array.isArray(meta.manual_material_lines)
           ? meta.manual_material_lines
           : [],
+        floor1_order_fulfillment: meta.floor1_order_fulfillment === true,
         quotation_missing: !q,
         last_workshop_notify_at: meta.last_workshop_notify_at || r.sent_to_production_at,
       });
@@ -678,8 +720,8 @@ export async function completeQuoteProductionOrder(sb, {
   const qid = String(quoteId || '').trim();
   const lineSet = normalizeProductionLineSet(productionLineSet);
   if (!qid) throw new Error('quote_id required');
-  const dest = String(destination || 'delivery').toLowerCase() === 'floor1' ? 'floor1' : 'delivery';
-  const skipDeliveryQueue = Boolean(deferDeliveryQueue) || dest === 'floor1';
+  const dest = normalizeQuoteFinishDestination(destination);
+  const skipDeliveryQueue = Boolean(deferDeliveryQueue) || dest === 'floor1' || dest === 'labels';
   const { assertQuoteReadyForFullComplete } = await import('./quoteProductionPartialComplete.js');
   await assertQuoteReadyForFullComplete(sb, qid, { productionLineSet: lineSet });
   const run = await findActiveQuoteRun(sb, qid, lineSet);
@@ -769,31 +811,21 @@ export async function completeQuoteProductionOrder(sb, {
   }
 
   let labelJobId = null;
-  try {
-    const aid = String(run.assembly_id || '').trim();
-    let asm = null;
-    if (aid) {
-      const { data } = await sb.from('warehouse_assemblies').select('name, family_sku').eq('id', aid).maybeSingle();
-      asm = data;
-    }
-    const labelName = String(asm?.name || quoteRow?.quote_number || 'Order').trim();
-    const labelSku = String(asm?.family_sku || quoteRow?.quote_number || '').trim();
-    if (labelName && labelSku) {
-      const { enqueueWarehouseProductionLabelJob } = await import('./productionLabelPrint.js');
-      labelJobId = await enqueueWarehouseProductionLabelJob(sb, {
-        name: labelName,
-        sku: labelSku,
-        qty: finishQty,
-        printedBy: 'Production complete',
-        source: 'quote_production_complete',
-        printedAt: new Date(),
+  if (dest === 'floor1' || dest === 'labels') {
+    try {
+      const metaLines = Array.isArray(routeMeta.lines) ? routeMeta.lines : [];
+      const labelLines = (summaryLines || []).length ? summaryLines : metaLines;
+      labelJobId = await printQuoteOrderLineLabels(sb, {
+        lines: labelLines,
+        quoteNumber: quoteRow?.quote_number || routeMeta.quote_number,
         customerName: routeMeta.customer_name,
         customerPhone: routeMeta.customer_phone,
-        quoteNumber: quoteRow?.quote_number || null,
+        qtyFallback: finishQty,
+        printedBy: dest === 'floor1' ? 'Floor 1 stock' : 'Production complete',
       });
+    } catch (labelErr) {
+      console.warn('[completeQuoteProductionOrder] label print failed:', labelErr?.message || labelErr);
     }
-  } catch (labelErr) {
-    console.warn('[completeQuoteProductionOrder] label print failed:', labelErr?.message || labelErr);
   }
 
   return {

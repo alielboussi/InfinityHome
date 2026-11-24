@@ -11,7 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
 import { kiosk } from '../components/kioskStyles';
-import { kioskScreenEdgesSafe } from '../lib/kioskLayout';
+import { kioskFooterBottomPad, kioskScreenEdgesSafe } from '../lib/kioskLayout';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi } from '../lib/productionKioskI18n';
 import { fetchUpholsteryProductionQuotes } from '../services/productionApi';
@@ -126,7 +126,9 @@ export default function UpholsteryQuotesScreen({
         keyExtractor={(item) => String(item.production_card_id || item.quote_id)}
         refreshing={loading}
         onRefresh={load}
-        contentContainerStyle={openQuotes.length === 0 ? styles.listEmpty : undefined}
+        contentContainerStyle={openQuotes.length === 0
+          ? styles.listEmpty
+          : { paddingBottom: kioskFooterBottomPad(insets) + 40 }}
         renderItem={({ item }) => (
           <Pressable
             style={({ pressed }) => [kiosk.card, styles.row, pressed && styles.rowPressed]}

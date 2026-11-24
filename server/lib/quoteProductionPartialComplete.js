@@ -198,6 +198,26 @@ export async function handoffQuoteLinePartialToFloor1(sb, {
     };
   }
 
+  try {
+    const items = await loadQuoteItems(sb, qid);
+    const raw = findQuoteLine(items, itemId);
+    const summary = raw ? buildProductionLineSummaryRow(raw, meta) : null;
+    const { printQuoteOrderLineLabels } = await import('./quoteProductionRouting.js');
+    await printQuoteOrderLineLabels(sb, {
+      lines: [{
+        name: String(summary?.name || raw?.name || meta.quote_number || '').trim(),
+        quantity: sliceQty,
+      }],
+      quoteNumber: meta.quote_number,
+      customerName: meta.customer_name,
+      customerPhone: meta.customer_phone,
+      qtyFallback: sliceQty,
+      printedBy: 'Floor 1 stock',
+    });
+  } catch (labelErr) {
+    console.warn('[handoffQuoteLinePartialToFloor1] label print failed:', labelErr?.message || labelErr);
+  }
+
   const run = await findActiveQuoteRun(sb, qid);
   const assemblyId = run?.assembly_id || meta.primary_assembly_id || null;
   if (!assemblyId) throw new Error('No assembly linked for Floor 1 stock');

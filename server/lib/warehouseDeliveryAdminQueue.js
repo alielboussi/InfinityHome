@@ -465,10 +465,20 @@ export async function registerQuoteOrderAwaitingDriver(sb, {
   const customerName = String(prev.customer_name || customerFields.customer_name || '').trim() || null;
   const customerPhone = String(prev.customer_phone || customerFields.customer_phone || '').trim() || null;
   const showroomOrder = prev.showroom_order === true || customerFields.showroom_order === true;
+  const floor1Fulfill = prev.floor1_order_fulfillment === true
+    || (prev.manual_material_lines || []).some(
+      (row) => String(row?.warehouse_location_id || '') === String(WAREHOUSE_FROM_LOCATION_ID),
+    );
   await sb.from(QUOTE_ROUTING).update({
     metadata: {
       ...prev,
       quote_number: resolvedQuoteNumber || prev.quote_number || null,
+      ...(floor1Fulfill ? {
+        floor1_order_fulfillment: true,
+        pending_floor1_credit: null,
+        floor1_awaiting_hassan: false,
+        finish_destination: 'delivery',
+      } : {}),
       ...(customerName ? { customer_name: customerName, customer_phone: customerPhone } : {}),
       ...(showroomOrder ? { showroom_order: true, customer_order: false } : {}),
       ...(!showroomOrder && customerName ? { customer_order: true } : {}),
@@ -485,6 +495,12 @@ export async function registerQuoteOrderAwaitingDriver(sb, {
           customer_order: true,
           customer_name: customerName,
           customer_phone: customerPhone,
+        } : {}),
+        ...(floor1Fulfill ? {
+          floor1_order_fulfillment: true,
+          delivery_admin_hold: false,
+          source_stock_deducted_at: now,
+          stock_deduct_location_id: WAREHOUSE_FROM_LOCATION_ID,
         } : {}),
       }),
     },
