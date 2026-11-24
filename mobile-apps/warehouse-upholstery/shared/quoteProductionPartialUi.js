@@ -10,6 +10,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { kioskModalBottomPad } from '../lib/kioskLayout';
 import { theme } from './theme';
 import {
   QuoteProductionLineExtras,
@@ -96,11 +98,12 @@ export function QuoteProductionDispositionModal({
   onPick,
   onCancel,
 }) {
+  const insets = useSafeAreaInsets();
   if (!visible) return null;
   const list = Array.isArray(choices) ? choices.filter((c) => c?.key && c?.label) : [];
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onCancel}>
-      <View style={styles.modalBackdrop}>
+      <View style={[styles.modalBackdrop, { paddingBottom: kioskModalBottomPad(insets) }]}>
         <View style={styles.modalCard}>
           <Text style={[styles.modalTitle, { textAlign }]}>{title}</Text>
           {message ? (
@@ -149,6 +152,8 @@ export function QuoteProductionWorkshopLineRows({
   const [qtyDraft, setQtyDraft] = useState('');
   const [confirmQty, setConfirmQty] = useState(null);
   const [handoffPick, setHandoffPick] = useState(null);
+  const insets = useSafeAreaInsets();
+  const modalBottom = { paddingBottom: kioskModalBottomPad(insets) };
 
   if (!list.length) return null;
 
@@ -317,7 +322,7 @@ export function QuoteProductionWorkshopLineRows({
       })}
 
       <Modal visible={Boolean(qtyModal)} transparent animationType="fade" onRequestClose={() => setQtyModal(null)}>
-        <View style={styles.modalBackdrop}>
+        <View style={[styles.modalBackdrop, modalBottom]}>
           <View style={styles.modalCard}>
             <Text style={[styles.modalTitle, { textAlign }]}>{tUi('quoteLineReadyQtyTitle', locale)}</Text>
             <TextInput
@@ -350,7 +355,7 @@ export function QuoteProductionWorkshopLineRows({
       </Modal>
 
       <Modal visible={Boolean(confirmQty)} transparent animationType="fade" onRequestClose={() => setConfirmQty(null)}>
-        <View style={styles.modalBackdrop}>
+        <View style={[styles.modalBackdrop, modalBottom]}>
           <View style={styles.modalCard}>
             <Text style={[styles.modalTitle, { textAlign }]}>
               {tUi('quoteLineReadyConfirmBody', locale)} ({confirmQty?.qty})

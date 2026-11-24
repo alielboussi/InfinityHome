@@ -154,6 +154,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 24,
     marginTop: 4,
+    paddingBottom: 12,
   },
-  iconBtn: { padding: 4 },
+  iconBtn: { padding: 12, minWidth: 64, minHeight: 64, alignItems: 'center', justifyContent: 'center' },
 });
