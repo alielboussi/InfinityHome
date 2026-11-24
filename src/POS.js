@@ -551,19 +551,22 @@ export default function POS({ isMobile = false }) {
       return;
     }
 
+    const locationIdForFetch = String(selectedLocation);
+    let cancelled = false;
+
     async function fetchProductsAndSets() {
       // Serve cached per-location snapshot instantly
       try {
-        const key = `pos:catalog:${selectedLocation}`;
+        const key = `pos:catalog:v2:${locationIdForFetch}`;
         const snap = cacheGet(key);
-        if (snap && snap.products && snap.sets) {
+        if (!cancelled && snap && snap.products && snap.sets) {
           setProducts((snap.products || []).filter((p) => isUuid(p?.id) || isKitwePosCatalogRow(p)));
           setSets(snap.sets || []);
         }
       } catch {}
       // Fetch inventory minimal shape, then hydrate products and locations to avoid 406/400s
       const [invSnap, combosRes, comboLocationsRes, comboItemsRes, locRowsRes, productLocationPricesRes, comboLocationPricesRes] = await Promise.all([
-        fetchInventorySnapshot(selectedLocation),
+        fetchInventorySnapshot(locationIdForFetch),
         fromPublic('combos')
           .select(POS_COMBO_SELECT),
         fromPublic('combo_locations')
@@ -572,10 +575,11 @@ export default function POS({ isMobile = false }) {
           .select('combo_id, product_id, quantity'),
         fromPublic('product_locations')
           .select('product_id, location_id')
-          .eq('location_id', selectedLocation),
-        fetchProductLocationPricesForLocation(db, selectedLocation).catch(() => []),
-        fetchComboLocationPricesForLocation(db, selectedLocation).catch(() => []),
+          .eq('location_id', locationIdForFetch),
+        fetchProductLocationPricesForLocation(db, locationIdForFetch).catch(() => []),
+        fetchComboLocationPricesForLocation(db, locationIdForFetch).catch(() => []),
       ]);
+      if (cancelled) return;
 
       let combosData = combosRes?.data || [];
       let comboLocationsData = comboLocationsRes?.data || [];
@@ -585,7 +589,9 @@ export default function POS({ isMobile = false }) {
       const productLocationPriceMap = buildProductLocationPriceMap(productLocationPricesRes || []);
       const comboLocationPriceMap = buildComboLocationPriceMap(comboLocationPricesRes || []);
 
-      let invData = (invSnap?.data || []).map(r => ({ product_id: r.product_id, quantity: r.quantity }));
+      let invData = (invSnap?.data || [])
+        .filter((r) => !r?.location || String(r.location) === locationIdForFetch)
+        .map((r) => ({ product_id: r.product_id, quantity: r.quantity }));
       // Collect valid product ids from inventory or location links
       const prodIds = Array.from(new Set([
         ...(invData || []).map(r => r.product_id),
@@ -616,9 +622,10 @@ export default function POS({ isMobile = false }) {
       if (directCatalogError || !prodRows.length) {
         try {
           const fallbackRows = await fetchPosCatalogViaApi({
-            locationId: selectedLocation,
+            locationId: locationIdForFetch,
             productIds: prodIds,
           });
+          if (cancelled) return;
           combosData = Array.isArray(fallbackRows?.combos) ? fallbackRows.combos : combosData;
           comboLocationsData = Array.isArray(fallbackRows?.combo_locations) ? fallbackRows.combo_locations : comboLocationsData;
           comboItemsData = Array.isArray(fallbackRows?.combo_items) ? fallbackRows.combo_items : comboItemsData;
@@ -629,12 +636,15 @@ export default function POS({ isMobile = false }) {
         } catch {}
       }
 
-      if (String(selectedLocation) === String(KITWE_LOCATION_ID)) {
+      if (cancelled) return;
+
+      if (locationIdForFetch === String(KITWE_LOCATION_ID)) {
         try {
           const [{ data: whAssemblies }, { data: whInv }] = await Promise.all([
             db.from('warehouse_assemblies').select('id, retail_product_id, metadata, item_kind, family_sku'),
             db.from('warehouse_assembly_inventory').select('assembly_id, location_id, quantity'),
           ]);
+          if (cancelled) return;
           prodRows = filterProductsListCatalogProducts(prodRows, whAssemblies, whInv);
         } catch (err) {
           console.warn('[pos] Kitwe products-list filter skipped', err);
@@ -651,7 +661,7 @@ export default function POS({ isMobile = false }) {
       });
       (prodRows || []).forEach(p => {
         if (allowedProductIds && !allowedProductIds.has(String(p.id))) return;
-        const priced = applyProductLocationPricing(p, selectedLocation, productLocationPriceMap);
+        const priced = applyProductLocationPricing(p, locationIdForFetch, productLocationPriceMap);
         productMap[p.id] = mapProductWithImage({
           ...priced,
           stock: Number(qtyByProduct[p.id] || 0),
@@ -662,7 +672,7 @@ export default function POS({ isMobile = false }) {
 
       // Filter combos for this location
       const combosForLocation = (combosData || []).filter(combo => {
-        return comboIsAvailableAtLocation(combo, selectedLocation, comboLocationsByCombo);
+        return comboIsAvailableAtLocation(combo, locationIdForFetch, comboLocationsByCombo);
       });
       // Filtered combos for this location
       // Centralized set inventory calculation
@@ -676,7 +686,7 @@ export default function POS({ isMobile = false }) {
       // Create filtered sets
           const filteredSets = combosForLocation
             .map(combo => {
-              const priced = applyComboLocationPricing(combo, selectedLocation, comboLocationPriceMap);
+              const priced = applyComboLocationPricing(combo, locationIdForFetch, comboLocationPriceMap);
               const setQty = getSetQty(priced.id);
           const basePrice = (priced.combo_price ?? priced.standard_price ?? 0);
           const promoPrice = (priced.promotional_price ?? 0);
@@ -717,11 +727,12 @@ export default function POS({ isMobile = false }) {
       let mergedProducts = filteredProducts;
       let extraKitweSets = [];
       try {
-        if (String(selectedLocation) === String(KITWE_LOCATION_ID)) {
-          const kitweCatalog = await fetchKitweWarehousePosCatalog(selectedLocation, {
+        if (locationIdForFetch === String(KITWE_LOCATION_ID)) {
+          const kitweCatalog = await fetchKitweWarehousePosCatalog(locationIdForFetch, {
             productLocationPriceMap,
             retailProducts: prodRows,
           });
+          if (cancelled) return;
           mergedProducts = mergePosCatalogProducts(filteredProducts, kitweCatalog.products);
           extraKitweSets = kitweCatalog.sets || [];
         } else {
@@ -730,6 +741,7 @@ export default function POS({ isMobile = false }) {
       } catch {
         mergedProducts = filteredProducts.map((p) => ({ ...p, posCatalogSource: 'products_list' }));
       }
+      if (cancelled) return;
       const allSets = [...filteredSets, ...extraKitweSets].map((set) => (
         set.kitweWarehouseSet ? set : mapComboWithImage(set)
       ));
@@ -755,7 +767,7 @@ export default function POS({ isMobile = false }) {
       // Cache snapshot for this location to make next entry instant
       try {
         cacheSet(
-          `pos:catalog:${selectedLocation}`,
+          `pos:catalog:v2:${locationIdForFetch}`,
           { products: mergedProducts, sets: [...filteredSets, ...extraKitweSets] },
           2 * 60 * 1000,
         );
@@ -763,6 +775,9 @@ export default function POS({ isMobile = false }) {
     }
 
     fetchProductsAndSets();
+    return () => {
+      cancelled = true;
+    };
   }, [selectedLocation, rtTickCatalog, catalogRefreshKey]);
   // --- END OF FIXED LOGIC ---
 

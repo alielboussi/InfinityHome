@@ -215,10 +215,48 @@ export function filterAssembliesForDeliveryFloor1Only(catalog) {
   writePatchFile(filePath, `${s.trimEnd()}\n${tail}`);
 }
 
+function uiStringsCloseIndex(s) {
+  const marker = '\nconst PRESET_I18N = {';
+  const presetIdx = s.indexOf(marker);
+  if (presetIdx === -1) return -1;
+  return s.lastIndexOf('\n};', presetIdx);
+}
+
+function ensureI18nKey(s, key, line) {
+  const closeIdx = uiStringsCloseIndex(s);
+  const inUiStrings = closeIdx !== -1 && s.slice(0, closeIdx).includes(`\n  ${key}:`);
+  if (inUiStrings) return s;
+  if (closeIdx === -1) {
+    console.warn(`[applyDeliveryKitPatches] i18n: cannot insert ${key} — UI_STRINGS close not found`);
+    return s;
+  }
+  const stray = new RegExp(`\\n\\s*${key}:\\s*\\{[^\\n]*\\},?`, 'g');
+  s = s.replace(stray, '');
+  const nextClose = uiStringsCloseIndex(s);
+  if (nextClose === -1) return s;
+  return `${s.slice(0, nextClose)}\n${line}${s.slice(nextClose)}`;
+}
+
 function patchDeliveryHubI18n(filePath) {
   if (!fs.existsSync(filePath)) return;
   const original = fs.readFileSync(filePath, 'utf8');
   let s = original;
+  const extraFarmAndOrders = [
+    ["deliveryFarmContinue", "  deliveryFarmContinue: { en: 'Continue', ar: 'متابعة' },"],
+    ["deliveryFarmSend", "  deliveryFarmSend: { en: 'Send', ar: 'إرسال' },"],
+    ["deliveryFarmDestFloor2", "  deliveryFarmDestFloor2: { en: 'Floor 2', ar: 'الطابق 2' },"],
+    ["deliveryFarmDestKitwe", "  deliveryFarmDestKitwe: { en: 'Kitwe', ar: 'كيتوي' },"],
+    ["filterCarpentry", "  filterCarpentry: { en: 'Carpentry', ar: 'النجارة' },"],
+    ["filterUpholstery", "  filterUpholstery: { en: 'Upholstery', ar: 'التنجيد' },"],
+    ["filterPainting", "  filterPainting: { en: 'Painting', ar: 'الدهان' },"],
+    ["cardSource", "  cardSource: { en: 'Source', ar: 'المصدر' },"],
+    ["cardCustomer", "  cardCustomer: { en: 'Customer', ar: 'الزبون' },"],
+    ["cardDepartment", "  cardDepartment: { en: 'Department', ar: 'القسم' },"],
+    ["cardQuoteNo", "  cardQuoteNo: { en: 'Quote #', ar: 'رقم العرض' },"],
+  ];
+  extraFarmAndOrders.forEach(([key, line]) => {
+    s = ensureI18nKey(s, key, line);
+  });
   if (!s.includes('sentDeliveriesSearchPlaceholder') && s.includes('sentDeliveriesTitle:')) {
     s = s.replace(
       "  sentDeliveriesTitle: { en: 'Sent deliveries', ar: 'التسليمات المرسلة' },",

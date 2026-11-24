@@ -4,6 +4,7 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 
 const appRoot = path.resolve(__dirname, '..');
 const peerList = require('./deliveryKitPeerDependencies');
@@ -165,8 +166,19 @@ try {
     dashboard.includes("navigate('DeliveryUnifiedQueue')"),
     'Dashboard must open unified production Orders queue (repairs + factory orders)',
   );
-  const hubI18n = fs.readFileSync(path.join(appRoot, 'deliveryKit', 'lib', 'productionKioskI18n.js'), 'utf8');
+  const hubI18nPath = path.join(appRoot, 'deliveryKit', 'lib', 'productionKioskI18n.js');
+  const hubI18n = fs.readFileSync(hubI18nPath, 'utf8');
   assert(hubI18n.includes('dashFloor1Deliveries'), 'Delivery i18n must label Floor 1 Deliveries tile');
+  const afterTranslate = hubI18n.split('export async function translateEnToAr')[1] || '';
+  assert(
+    !afterTranslate.includes('deliveryFarmContinue'),
+    'deliveryFarmContinue must live inside UI_STRINGS, not after translateEnToAr',
+  );
+  try {
+    execFileSync(process.execPath, ['--check', hubI18nPath], { stdio: 'pipe' });
+  } catch (err) {
+    assert(false, `productionKioskI18n.js syntax error: ${err.stderr || err.message}`);
+  }
   const repairQueue = fs.readFileSync(
     path.join(appRoot, 'deliveryKit', 'screens', 'DeliveryRepairQueueScreen.js'),
     'utf8',
