@@ -55,7 +55,7 @@ export default function DashboardScreen({ grant, userEmail, userDisplayName, nav
             <View style={styles.emptyCard}>
               <Text style={styles.emptyTitle}>No access yet</Text>
               <Text style={styles.hint}>
-                Ask an administrator to enable Products for your account.
+                Ask an administrator to enable pages for your account in User Access.
               </Text>
             </View>
           ) : (

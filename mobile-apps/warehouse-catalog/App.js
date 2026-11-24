@@ -13,7 +13,6 @@ import { WarehouseCatalogProvider } from './shared/WarehouseCatalogContext';
 import { useMobileAccessGrant } from './shared/useMobileAccessGrant';
 import DashboardScreen from './screens/DashboardScreen';
 import WarehouseProductsScreen from './screens/WarehouseProductsScreen';
-import WarehouseFloor2Screen from './screens/WarehouseFloor2Screen';
 import FarmWarehouseScreen from './screens/FarmWarehouseScreen';
 import WarehouseStoreroomScreen from './screens/WarehouseStoreroomScreen';
 import WarehousePacketsScreen from './screens/WarehousePacketsScreen';
@@ -57,7 +56,7 @@ function MainStack() {
       </Stack.Screen>
       <Stack.Screen
         name="WarehouseProducts"
-        options={{ title: 'Floor 1' }}
+        options={{ title: 'Floors' }}
         initialParams={{ catalogMode: 'complete' }}
       >
         {(props) => (
@@ -68,11 +67,11 @@ function MainStack() {
       </Stack.Screen>
       <Stack.Screen
         name="WarehouseFloor2"
-        options={{ title: 'Floor 2' }}
+        options={{ title: 'Floors' }}
       >
         {(props) => (
-          <MobileScreenGate screenId="warehouse_floor_2" grant={grant} navigation={props.navigation}>
-            <WarehouseFloor2Screen {...props} />
+          <MobileScreenGate screenId="warehouse_products" grant={grant} navigation={props.navigation}>
+            <WarehouseProductsScreen {...props} />
           </MobileScreenGate>
         )}
       </Stack.Screen>

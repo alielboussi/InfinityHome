@@ -6,6 +6,7 @@ export function catalogStockMaps(catalog) {
     return {
       assemblyWarehouseQty: {},
       assemblyWarehouseLeftoverQty: {},
+      assemblyFloor2Qty: {},
       packetWarehouseQty: {},
     };
   }
@@ -25,6 +26,7 @@ export function catalogStockMaps(catalog) {
   return {
     assemblyWarehouseQty,
     assemblyWarehouseLeftoverQty: assemblyWarehouseLeftoverQty || {},
+    assemblyFloor2Qty: catalog.assemblyFloor2Qty || {},
     packetWarehouseQty: catalog.packetWarehouseQty || {},
   };
 }

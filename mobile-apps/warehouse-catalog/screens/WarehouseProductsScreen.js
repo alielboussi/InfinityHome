@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -30,7 +30,15 @@ import { attachCatalogProductPhoto } from '../shared/catalogPhotoApi';
 import { pickCatalogProductPhotoFromLibrary } from '../lib/pickCatalogProductPhoto';
 import { prepareCatalogPhotoForUpload } from '../shared/prepareCatalogPhotoUpload';
 import { isMattressCatalogProductName } from '../shared/repoSrc/utils/isMattressCatalogProductName.js';
-import { resolveWarehouseCatalogAssemblyImageUri } from '../shared/warehouseAssemblyImageUri';
+
+function floor1CatalogImageUri(assembly) {
+  const url = String(assembly?.image_url || '').trim();
+  if (!url) return '';
+  const meta = assembly?.metadata && typeof assembly.metadata === 'object' ? assembly.metadata : {};
+  const wip = String(meta.floor2_wip_image_url || '').trim();
+  if (wip && wip === url) return '';
+  return url;
+}
 import { buildPacketsByAssembly } from '../shared/warehousePacketGrouping';
 import { useWarehouseCatalog } from '../shared/WarehouseCatalogContext';
 import { catalogStockMaps } from '../shared/warehouseCatalogStockMaps';
@@ -90,37 +98,8 @@ function assemblyCategoryKey(assembly, categoryIndex) {
   return key;
 }
 
-function formatDimensionsLine(assembly) {
-  const l = assembly?.dim_length;
-  const w = assembly?.dim_width;
-  const h = assembly?.dim_height;
-  const hasAny = [l, w, h].some((v) => v != null && v !== '' && Number.isFinite(Number(v)));
-  if (!hasAny) return '';
-  const fmt = (v) => {
-    if (v == null || v === '') return '—';
-    const n = Number(v);
-    return Number.isFinite(n) ? String(n) : '—';
-  };
-  return `Dimensions: ${fmt(l)} × ${fmt(w)} × ${fmt(h)} cm`;
-}
-
-function formatVolumeLine(assembly) {
-  const l = Number(assembly?.dim_length);
-  const w = Number(assembly?.dim_width);
-  const h = Number(assembly?.dim_height);
-  if (!Number.isFinite(l) || !Number.isFinite(w) || !Number.isFinite(h)) return '';
-  if (l <= 0 || w <= 0 || h <= 0) return '';
-  const m3 = (l * w * h) / 1_000_000;
-  if (!Number.isFinite(m3)) return '';
-  const display = m3.toLocaleString('en-US', { maximumFractionDigits: 2 });
-  return `Volume (m³): ${display}`;
-}
-
-function ProductThumbnail({ assembly, setComponentAssemblies, categoryIndex }) {
-  const uri = resolveWarehouseCatalogAssemblyImageUri(assembly, {
-    setComponentAssemblies,
-    categoryIndex,
-  });
+function ProductThumbnail({ assembly }) {
+  const uri = floor1CatalogImageUri(assembly);
   if (uri) {
     return (
       <Image
@@ -131,12 +110,7 @@ function ProductThumbnail({ assembly, setComponentAssemblies, categoryIndex }) {
       />
     );
   }
-  return (
-    <View style={styles.thumbPlaceholder}>
-      <Text style={styles.thumbPlaceholderIcon} accessibilityElementsHidden>▦</Text>
-      <Text style={styles.thumbPlaceholderText}>Photo</Text>
-    </View>
-  );
+  return <View style={styles.thumbEmpty} />;
 }
 
 export default function WarehouseProductsScreen({ navigation, route }) {
@@ -161,8 +135,10 @@ export default function WarehouseProductsScreen({ navigation, route }) {
   const canPrintLabel = isWarehouseCatalogLabelPrintAllowed(grant, userEmail);
   const canImportPhoto = isWarehouseCatalogPhotoImportAllowed(grant, userEmail);
   const [search, setSearch] = useState('');
-  /** Default: qty &gt; 0 only. Toggle header icon to show qty ≤ 0 across the catalog. */
-  const [zeroStockOnly, setZeroStockOnly] = useState(false);
+  const searchRef = useRef(null);
+  /** '' = all products. floor1 | floor2 | both = qty 0 filter. */
+  const [zeroStockFilter, setZeroStockFilter] = useState('');
+  const [zeroStockPickerOpen, setZeroStockPickerOpen] = useState(false);
   const [categoryFilterOpen, setCategoryFilterOpen] = useState(false);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState(() => new Set());
   const [photoPreview, setPhotoPreview] = useState(null);
@@ -196,7 +172,7 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     };
   }, [categoryIndex]);
 
-  const { assemblyWarehouseQty, assemblyWarehouseLeftoverQty, packetWarehouseQty } = useMemo(
+  const { assemblyWarehouseQty, assemblyWarehouseLeftoverQty, assemblyFloor2Qty, packetWarehouseQty } = useMemo(
     () => catalogStockMaps(catalog),
     [catalog],
   );
@@ -350,14 +326,16 @@ export default function WarehouseProductsScreen({ navigation, route }) {
 
     const raw = search.trim();
     let base = rows;
-    if (zeroStockOnly) {
+    if (zeroStockFilter) {
       base = rows.filter((row) => {
-        if (row.listKind === 'set') {
-          const q = Number(assemblyWarehouseQty[String(row.entry.setAssembly.id)] ?? 0);
-          return q <= 0;
-        }
-        const q = Number(assemblyWarehouseQty[String(row.assembly.id)] ?? 0);
-        return q <= 0;
+        const id = row.listKind === 'set'
+          ? String(row.entry.setAssembly.id)
+          : String(row.assembly.id);
+        const floor1 = Number(assemblyWarehouseQty[id] ?? 0);
+        const floor2 = Number(assemblyFloor2Qty[id] ?? 0);
+        if (zeroStockFilter === 'floor1') return floor1 <= 0;
+        if (zeroStockFilter === 'floor2') return floor2 <= 0;
+        return floor1 <= 0 && floor2 <= 0;
       });
     }
     if (raw) {
@@ -387,7 +365,8 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     matchesProductSearch,
     matchesSetEntrySearch,
     assemblyWarehouseQty,
-    zeroStockOnly,
+    assemblyFloor2Qty,
+    zeroStockFilter,
   ]);
 
   const toggleExpanded = (id) => {
@@ -407,10 +386,6 @@ export default function WarehouseProductsScreen({ navigation, route }) {
       warehouseLocationId: catalog?.warehouseLocationId,
       catalogSnapshot: catalog,
     });
-  };
-
-  const openNewSetForm = () => {
-    navigation.navigate('SetForm');
   };
 
   const formatQty = (value) => {
@@ -569,10 +544,7 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     const cat = categoryName(setAssembly.category_id, setAssembly);
     const componentLines = (entry.components || []).filter((line) => line?.component);
     const setComponentAssemblies = componentLines.map((line) => line.component).filter(Boolean);
-    const imageUri = resolveWarehouseCatalogAssemblyImageUri(setAssembly, {
-      setComponentAssemblies,
-      categoryIndex,
-    });
+    const imageUri = floor1CatalogImageUri(setAssembly);
     const packetLines = componentLines.flatMap((line) => {
       const product = line.component;
       const prodId = String(product.id);
@@ -582,8 +554,6 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     });
 
     const buildableQty = assemblyWarehouseQty[setId] ?? 0;
-    const qtyNum = Math.max(0, Math.floor(Number(buildableQty) || 0));
-    const qtyStyle = qtyNum > 0 ? styles.qtyValuePositive : styles.qtyValueZero;
     const isStockBusy = setStockBusyId === setId;
     const setQtyDraftVal = setQtyDraftById[setId] !== undefined ? String(setQtyDraftById[setId]) : '';
 
@@ -598,11 +568,7 @@ export default function WarehouseProductsScreen({ navigation, route }) {
                 }}
                 disabled={!imageUri}
               >
-                <ProductThumbnail
-                  assembly={setAssembly}
-                  setComponentAssemblies={setComponentAssemblies}
-                  categoryIndex={categoryIndex}
-                />
+                <ProductThumbnail assembly={setAssembly} />
               </Pressable>
               {renderCardPhotoActions(setAssembly)}
             </View>
@@ -614,8 +580,11 @@ export default function WarehouseProductsScreen({ navigation, route }) {
             </Text>
           </View>
           <View style={styles.qtyFooter}>
-            <Text style={[styles.qtyValue, qtyStyle]} numberOfLines={1}>
-              {formatQty(buildableQty)}
+            <Text style={[styles.floorQtyLine, styles.qtyValuePositive]} numberOfLines={1}>
+              Floor 1 Qty {formatQty(buildableQty)}
+            </Text>
+            <Text style={[styles.floorQtyLine, styles.qtyValuePositive]} numberOfLines={1}>
+              Floor 2 Qty {formatQty(assemblyFloor2Qty[setId] ?? 0)}
             </Text>
             {canEditSetStock ? (
               <View style={styles.setStockActionRow}>
@@ -725,8 +694,6 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     const displayQty = catalogMode === 'incomplete'
       ? 0
       : (isSetComponent && leftoverQty != null ? leftoverQty : finishedQty);
-    const dimLine = formatDimensionsLine(assembly);
-    const volumeLine = formatVolumeLine(assembly);
     const bom = analyzeAssemblyPacketBom(assembly.packet_count, pktList);
     const bomHint = catalogMode === 'incomplete'
       ? (pktList.length === 0
@@ -746,8 +713,8 @@ export default function WarehouseProductsScreen({ navigation, route }) {
 
     const qtyStyle = catalogMode === 'incomplete'
       ? styles.qtyIncomplete
-      : (qtyNum > 0 ? styles.qtyValuePositive : styles.qtyValueZero);
-    const imageUri = resolveWarehouseCatalogAssemblyImageUri(assembly, { categoryIndex });
+      : styles.qtyValuePositive;
+    const imageUri = floor1CatalogImageUri(assembly);
     const colorList = assemblyColorList(assembly);
 
     return (
@@ -763,7 +730,7 @@ export default function WarehouseProductsScreen({ navigation, route }) {
               disabled={!imageUri}
               style={({ pressed }) => [imageUri && pressed && styles.thumbPressablePressed]}
             >
-              <ProductThumbnail assembly={assembly} categoryIndex={categoryIndex} />
+              <ProductThumbnail assembly={assembly} />
               {imageUri ? (
                 <View style={styles.thumbZoomBadge} pointerEvents="none">
                   <MaterialCommunityIcons name="magnify-plus-outline" size={16} color="#e2e8f0" />
@@ -788,20 +755,25 @@ export default function WarehouseProductsScreen({ navigation, route }) {
           {catalogMode === 'incomplete' && bomHint ? (
             <Text style={styles.cardMeta} numberOfLines={2}>{bomHint}</Text>
           ) : null}
-          {dimLine ? (
-            <Text style={styles.cardSpec} numberOfLines={2}>{dimLine}</Text>
-          ) : null}
-          {volumeLine ? (
-            <Text style={styles.cardSpec} numberOfLines={1}>{volumeLine}</Text>
-          ) : null}
           </View>
           <View style={styles.qtyFooter}>
-            <Text
-              style={[styles.qtyValue, showBoxAndUnits && styles.qtyValueBoxUnit, qtyStyle]}
-              numberOfLines={showBoxAndUnits ? 2 : 1}
-            >
-              {qtyDisplayText}
-            </Text>
+            {catalogMode === 'incomplete' ? (
+              <Text
+                style={[styles.qtyValue, qtyStyle]}
+                numberOfLines={1}
+              >
+                {qtyDisplayText}
+              </Text>
+            ) : (
+              <>
+                <Text style={[styles.floorQtyLine, styles.qtyValuePositive]} numberOfLines={1}>
+                  Floor 1 Qty {formatQty(displayQty)}
+                </Text>
+                <Text style={[styles.floorQtyLine, styles.qtyValuePositive]} numberOfLines={1}>
+                  Floor 2 Qty {formatQty(assemblyFloor2Qty[id] ?? 0)}
+                </Text>
+              </>
+            )}
           </View>
         </View>
         {isOpen ? (
@@ -823,35 +795,26 @@ export default function WarehouseProductsScreen({ navigation, route }) {
         <View style={styles.listHeaderMain}>
           <View style={styles.listHeaderText}>
             <Text style={styles.listHeaderTitle}>
-              {catalogMode === 'incomplete' ? 'Incomplete Products' : 'Products'}
+              {catalogMode === 'incomplete' ? 'Incomplete Products' : 'Floors'}
             </Text>
             <Text style={styles.listHeaderMeta}>
               {filtered.length} item{filtered.length === 1 ? '' : 's'}
-              {zeroStockOnly ? ' · zero stock only' : ' · all products'}
+              {zeroStockFilter === 'floor1'
+                ? ' · Floor 1 qty 0'
+                : zeroStockFilter === 'floor2'
+                  ? ' · Floor 2 qty 0'
+                  : zeroStockFilter === 'both'
+                    ? ' · both floors qty 0'
+                    : ' · all products'}
             </Text>
           </View>
-          <Pressable
-            style={[styles.stockFilterBtn, zeroStockOnly && styles.stockFilterBtnActive]}
-            onPress={() => setZeroStockOnly((v) => !v)}
-            accessibilityRole="button"
-            accessibilityLabel={
-              zeroStockOnly
-                ? 'Showing zero stock only. Tap to show all warehouse products.'
-                : 'Showing all products. Tap to filter zero stock only.'
-            }
-          >
-            <MaterialCommunityIcons
-              name={zeroStockOnly ? 'cube-off-outline' : 'cube-outline'}
-              size={22}
-              color={zeroStockOnly ? '#38bdf8' : '#94a3b8'}
-            />
-          </Pressable>
         </View>
       </View>
       <View style={styles.toolbar}>
         <TextInput
+          ref={searchRef}
           style={styles.search}
-          placeholder="Search SKU, name, or set…"
+          placeholder="Name, SKU, or Code 128 scan…"
           placeholderTextColor={theme.textDim}
           value={search}
           onChangeText={wedgeAwareTextChange(setSearch, {
@@ -867,6 +830,13 @@ export default function WarehouseProductsScreen({ navigation, route }) {
           }}
         />
         <Pressable
+          style={styles.filterBtn}
+          onPress={() => searchRef.current?.focus?.()}
+          accessibilityLabel="Scan Code 128 into search"
+        >
+          <MaterialCommunityIcons name="barcode-scan" size={22} color="#94a3b8" />
+        </Pressable>
+        <Pressable
           style={[styles.filterBtn, categoryFilterActive && styles.filterBtnActive]}
           onPress={() => setCategoryFilterOpen(true)}
           accessibilityLabel={categoryFilterActive
@@ -879,23 +849,28 @@ export default function WarehouseProductsScreen({ navigation, route }) {
             color={categoryFilterActive ? '#38bdf8' : '#94a3b8'}
           />
         </Pressable>
+        {catalogMode === 'complete' ? (
+          <Pressable
+            style={[styles.stockFilterBtn, Boolean(zeroStockFilter) && styles.stockFilterBtnActive]}
+            onPress={() => setZeroStockPickerOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Filter by quantity 0"
+          >
+            <MaterialCommunityIcons
+              name={zeroStockFilter ? 'numeric-0-box-outline' : 'numeric-0-box'}
+              size={22}
+              color={zeroStockFilter ? '#38bdf8' : '#94a3b8'}
+            />
+          </Pressable>
+        ) : null}
         {catalogMode === 'complete' && canAddProduct ? (
-          <>
-            <Pressable
-              style={styles.addSetBtn}
-              onPress={openNewSetForm}
-              accessibilityLabel="Create set"
-            >
-              <Text style={styles.addSetBtnText}>Set</Text>
-            </Pressable>
-            <Pressable
-              style={styles.addBtn}
-              onPress={openNewProductForm}
-              accessibilityLabel="Add product"
-            >
-              <Text style={styles.addBtnText}>+</Text>
-            </Pressable>
-          </>
+          <Pressable
+            style={styles.addBtn}
+            onPress={openNewProductForm}
+            accessibilityLabel="Add product"
+          >
+            <Text style={styles.addBtnText}>+</Text>
+          </Pressable>
         ) : null}
       </View>
 
@@ -922,9 +897,9 @@ export default function WarehouseProductsScreen({ navigation, route }) {
             <Text style={styles.empty}>
               {catalogMode === 'incomplete'
                 ? 'No incomplete products.'
-                : zeroStockOnly
-                  ? 'No products or sets with zero stock.'
-                  : 'No products or sets yet. Tap + to add a product.'}
+                : zeroStockFilter
+                  ? 'No products match this qty 0 filter.'
+                  : 'No products yet. Tap + to add a product.'}
             </Text>
           }
           refreshing={refreshing}
@@ -934,6 +909,66 @@ export default function WarehouseProductsScreen({ navigation, route }) {
           {...LIST_PERF}
         />
       )}
+
+      <Modal
+        visible={zeroStockPickerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setZeroStockPickerOpen(false)}
+      >
+        <Pressable style={styles.categoryModalBackdrop} onPress={() => setZeroStockPickerOpen(false)}>
+          <View style={styles.categoryPickerSheet} onStartShouldSetResponder={() => true}>
+            <View style={styles.categoryPickerHeader}>
+              <Text style={styles.categoryPickerTitle}>Filter qty = 0</Text>
+              {zeroStockFilter ? (
+                <Pressable
+                  onPress={() => {
+                    setZeroStockFilter('');
+                    setZeroStockPickerOpen(false);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear qty 0 filter"
+                >
+                  <Text style={styles.categoryPickerClear}>Clear</Text>
+                </Pressable>
+              ) : null}
+            </View>
+            <Text style={styles.categoryPickerHint}>
+              Choose which floor quantity must be zero.
+            </Text>
+            {[
+              { id: 'floor1', label: 'Floor 1 Qty = 0' },
+              { id: 'floor2', label: 'Floor 2 Qty = 0' },
+              { id: 'both', label: 'Both floors Qty = 0' },
+            ].map((opt) => (
+              <Pressable
+                key={opt.id}
+                style={[
+                  styles.categoryPickerRow,
+                  zeroStockFilter === opt.id && styles.categoryPickerRowActive,
+                ]}
+                onPress={() => {
+                  setZeroStockFilter(opt.id);
+                  setZeroStockPickerOpen(false);
+                }}
+              >
+                <MaterialCommunityIcons
+                  name={zeroStockFilter === opt.id ? 'radiobox-marked' : 'radiobox-blank'}
+                  size={22}
+                  color={zeroStockFilter === opt.id ? '#38bdf8' : '#64748b'}
+                />
+                <Text style={styles.categoryPickerRowText}>{opt.label}</Text>
+              </Pressable>
+            ))}
+            <Pressable
+              style={styles.categoryPickerDone}
+              onPress={() => setZeroStockPickerOpen(false)}
+            >
+              <Text style={styles.categoryPickerDoneText}>Done</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
 
       <Modal
         visible={categoryFilterOpen}
@@ -1191,13 +1226,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   listContent: { paddingHorizontal: 10, paddingBottom: 24 },
-  gridRow: { gap: 8, marginBottom: 8, alignItems: 'flex-start' },
+  gridRow: { gap: 8, marginBottom: 8, alignItems: 'stretch' },
   gridCard: {
-    flexGrow: 0,
+    flexGrow: 1,
     flexShrink: 1,
-    flexBasis: '48%',
+    flexBasis: 0,
     maxWidth: '48%',
     minWidth: 0,
+    minHeight: 328,
     backgroundColor: theme.surface,
     borderRadius: theme.radius,
     borderWidth: 1,
@@ -1205,10 +1241,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   cardPress: {
+    flex: 1,
     padding: 8,
     paddingBottom: 6,
+    justifyContent: 'space-between',
   },
-  cardMain: {},
+  cardMain: { flexGrow: 1 },
   thumbWrap: { position: 'relative' },
   thumbPressablePressed: { opacity: 0.88 },
   thumbZoomBadge: {
@@ -1231,27 +1269,22 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: '#ffffff',
   },
-  thumbPlaceholder: {
+  thumbEmpty: {
     width: '100%',
     aspectRatio: 1,
     borderRadius: 8,
-    backgroundColor: '#0f172a',
-    borderWidth: 1,
-    borderColor: '#334155',
-    borderStyle: 'dashed',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: theme.surface,
   },
-  thumbPlaceholderIcon: { color: '#475569', fontSize: 28, marginBottom: 4 },
-  thumbPlaceholderText: { color: '#64748b', fontSize: 12, fontWeight: '600' },
   qtyFooter: {
     marginTop: 8,
-    paddingTop: 6,
-    paddingBottom: 2,
+    paddingTop: 8,
+    paddingBottom: 4,
+    minHeight: 56,
+    flexShrink: 0,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: theme.border,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
     width: '100%',
   },
   setStockActionRow: {
@@ -1291,6 +1324,14 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   btnDisabled: { opacity: 0.45 },
+  floorQtyLine: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '800',
+    textAlign: 'center',
+    width: '100%',
+    marginTop: 2,
+  },
   qtyValue: { fontSize: 18, fontWeight: '800', textAlign: 'center', width: '100%' },
   qtyValueBoxUnit: { fontSize: 14, lineHeight: 19, fontWeight: '700' },
   qtyValuePositive: { color: '#069506' },
@@ -1319,8 +1360,21 @@ const styles = StyleSheet.create({
     zIndex: 2,
     gap: 6,
   },
-  cardTitle: { color: '#f8fafc', fontSize: 14, fontWeight: '700', marginTop: 8 },
-  cardSku: { color: '#cbd5e1', fontFamily: 'monospace', fontSize: 11, marginTop: 4 },
+  cardTitle: {
+    color: '#f8fafc',
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 8,
+    minHeight: 36,
+    lineHeight: 18,
+  },
+  cardSku: {
+    color: '#cbd5e1',
+    fontFamily: 'monospace',
+    fontSize: 11,
+    marginTop: 4,
+    minHeight: 16,
+  },
   cardMeta: { color: '#94a3b8', marginTop: 4, fontSize: 11, lineHeight: 15 },
   cardSpec: { color: '#cbd5e1', marginTop: 3, fontSize: 10, lineHeight: 14 },
   packetList: {

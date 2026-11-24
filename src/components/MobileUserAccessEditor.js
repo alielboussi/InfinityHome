@@ -9,8 +9,6 @@ import {
   isCatalogLocationPhotoUploadAllowed,
   isCatalogLocationStockIncreaseAllowed,
   isMobileScreenAccessAllowed,
-  isWarehouseFloor2CreateProductAllowed,
-  isWarehouseFloor2CreateSetAllowed,
   sanitizeMobileAccessGrantForUser,
   USER_ACCESS_CATALOG_APP_LABEL,
 } from '../mobile/mobileAccessManifest';
@@ -92,20 +90,6 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
         ...(prev.location_photo_upload || {}),
         [screenId]: allowed ? 'allow' : 'deny',
       },
-    }));
-  };
-
-  const setFloor2CreateProduct = (allowed) => {
-    setGrant((prev) => ({
-      ...prev,
-      warehouse_floor2_create_product: allowed ? 'allow' : 'deny',
-    }));
-  };
-
-  const setFloor2CreateSet = (allowed) => {
-    setGrant((prev) => ({
-      ...prev,
-      warehouse_floor2_create_set: allowed ? 'allow' : 'deny',
     }));
   };
 
@@ -191,7 +175,6 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
                 <th className="mobile-access-matrix__access-col">Qty Increase</th>
                 <th className="mobile-access-matrix__access-col">Image Upload</th>
                 <th className="mobile-access-matrix__access-col">+ Prod</th>
-                <th className="mobile-access-matrix__access-col">+ Set</th>
                 <th className="mobile-access-matrix__access-col">Print Labels</th>
               </tr>
             </thead>
@@ -199,15 +182,12 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
               {matrixScreens.map((screen) => {
                 const allowed = isMobileScreenAccessAllowed(grant, screen.id);
                 const hasLocationRights = LOCATION_RIGHTS_SET.has(screen.id);
-                const isFloor1Screen = screen.id === 'warehouse_products';
-                const isFloor2Screen = screen.id === 'warehouse_floor_2';
+                const isFloorsScreen = screen.id === 'warehouse_products';
                 const stockIncAllowed = isCatalogLocationStockIncreaseAllowed(grant, screen.id, '');
                 const photoUpAllowed = isCatalogLocationPhotoUploadAllowed(grant, screen.id, '');
                 const floor1AddAllowed = grant.warehouse_catalog_add_product === 'allow';
                 const floor1PhotoAllowed = grant.warehouse_catalog_photo_import === 'allow';
                 const floor1LabelAllowed = grant.warehouse_catalog_label_print === 'allow';
-                const floor2ProdAllowed = isWarehouseFloor2CreateProductAllowed(grant, '');
-                const floor2SetAllowed = isWarehouseFloor2CreateSetAllowed(grant, '');
                 return (
                   <tr key={screen.id}>
                     <td className="mobile-access-matrix__screen-col" title={screen.description}>
@@ -240,7 +220,7 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
                       )}
                     </td>
                     <td className="mobile-access-matrix__access-col">
-                      {isFloor1Screen ? (
+                      {isFloorsScreen ? (
                         <select
                           className="mobile-access-yesno"
                           value={floor1PhotoAllowed ? 'yes' : 'no'}
@@ -248,7 +228,7 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
                             ...prev,
                             warehouse_catalog_photo_import: e.target.value === 'yes' ? 'allow' : 'deny',
                           }))}
-                          aria-label="Floor 1 image upload"
+                          aria-label="Floors image upload"
                         >
                           <option value="yes">Yes</option>
                           <option value="no">No</option>
@@ -268,7 +248,7 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
                       )}
                     </td>
                     <td className="mobile-access-matrix__access-col">
-                      {isFloor1Screen ? (
+                      {isFloorsScreen ? (
                         <select
                           className="mobile-access-yesno"
                           value={floor1AddAllowed ? 'yes' : 'no'}
@@ -276,17 +256,7 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
                             ...prev,
                             warehouse_catalog_add_product: e.target.value === 'yes' ? 'allow' : 'deny',
                           }))}
-                          aria-label="Floor 1 + Prod access"
-                        >
-                          <option value="yes">Yes</option>
-                          <option value="no">No</option>
-                        </select>
-                      ) : isFloor2Screen ? (
-                        <select
-                          className="mobile-access-yesno"
-                          value={floor2ProdAllowed ? 'yes' : 'no'}
-                          onChange={(e) => setFloor2CreateProduct(e.target.value === 'yes')}
-                          aria-label="Floor 2 + Prod access"
+                          aria-label="Floors + Prod access"
                         >
                           <option value="yes">Yes</option>
                           <option value="no">No</option>
@@ -296,22 +266,7 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
                       )}
                     </td>
                     <td className="mobile-access-matrix__access-col">
-                      {isFloor2Screen ? (
-                        <select
-                          className="mobile-access-yesno"
-                          value={floor2SetAllowed ? 'yes' : 'no'}
-                          onChange={(e) => setFloor2CreateSet(e.target.value === 'yes')}
-                          aria-label="Floor 2 + Set access"
-                        >
-                          <option value="yes">Yes</option>
-                          <option value="no">No</option>
-                        </select>
-                      ) : (
-                        <span style={{ color: 'var(--br-subtle, #64748b)' }}>—</span>
-                      )}
-                    </td>
-                    <td className="mobile-access-matrix__access-col">
-                      {isFloor1Screen ? (
+                      {isFloorsScreen ? (
                         <select
                           className="mobile-access-yesno"
                           value={floor1LabelAllowed ? 'yes' : 'no'}
@@ -319,7 +274,7 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
                             ...prev,
                             warehouse_catalog_label_print: e.target.value === 'yes' ? 'allow' : 'deny',
                           }))}
-                          aria-label="Floor 1 print Zebra labels"
+                          aria-label="Floors print Zebra labels"
                         >
                           <option value="yes">Yes</option>
                           <option value="no">No</option>
