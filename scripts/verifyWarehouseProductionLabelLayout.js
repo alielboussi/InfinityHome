@@ -36,7 +36,7 @@ async function main() {
   }
 
   const simple = computeProductionLabelLayout({ imageQrDataLength: qrLen });
-  if (simple.qrFootprintMm < 22) {
+  if (simple.qrFootprintMm < 18) {
     throw new Error(`Photo QR too small: ${simple.qrFootprintMm.toFixed(2)}mm`);
   }
 

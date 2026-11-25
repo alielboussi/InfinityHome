@@ -40,8 +40,10 @@ export const HEADER_CLEARANCE_MM = 1.15;
 export const MAX_QR_FOOTPRINT_MM = 34;
 export const MIN_QR_FOOTPRINT_MM = 24;
 /** Photo QR sits after Name (and optional rows), Date/Time below the QR. */
-export const GAP_BEFORE_QR_MM = 1.0;
-export const GAP_AFTER_QR_MM = 1.0;
+export const GAP_BEFORE_QR_MM = 1.2;
+export const GAP_AFTER_QR_MM = 2.0;
+/** Zebra ^BQ draws a 4-module quiet zone on each side; layout must reserve it. */
+export const QR_QUIET_ZONE_MODULES = 4;
 
 export const FIELD_LABELS = {
   sku: 'SKU:',
@@ -147,8 +149,8 @@ export function computeProductionLabelLayout({
   const remainingMm = heightMm - marginMm - qrBlockYMm - footerMm - GAP_AFTER_QR_MM;
   const capMm = Math.min(MAX_QR_FOOTPRINT_MM, Math.max(16, remainingMm));
   const mag = zebraQrMagnification(mmToDots(capMm, dpi), qrDataLen);
-  const modules = estimateZebraQrModules(qrDataLen);
-  const qrFootprintMm = (modules * mag * 25.4) / Number(dpi);
+  const symbolModules = zebraQrSymbolModules(qrDataLen);
+  const qrFootprintMm = (symbolModules * mag * 25.4) / Number(dpi);
   const imageQrCenterMm = centerXMm;
   const imageQrLeftMm = centerXMm - qrFootprintMm / 2;
 
@@ -210,7 +212,7 @@ export function computeProductionLabelLayout({
       nameValueHeight: toDots(nameBlockHeightMm),
       qrBlockY: toDots(qrBlockYMm),
       imageQrX: toDots(imageQrLeftMm),
-      qrSize: modules * mag,
+      qrSize: symbolModules * mag,
       colorRowY: colorRowMm != null ? textTopDots(colorRowMm) : null,
       boxRowY: boxRowMm != null ? textTopDots(boxRowMm) : null,
       dimensionsRowY: dimensionsRowMm != null ? textTopDots(dimensionsRowMm) : null,
@@ -240,9 +242,14 @@ export function estimateZebraQrModules(dataLength = 40) {
   return 21 + 4 * (version - 1);
 }
 
-/** Largest Zebra ^BQ magnification (2–10) that fits targetDots. */
+/** Dark modules plus Zebra quiet zone (4 modules per side). */
+export function zebraQrSymbolModules(dataLength = 40) {
+  return estimateZebraQrModules(dataLength) + QR_QUIET_ZONE_MODULES * 2;
+}
+
+/** Largest Zebra ^BQ magnification (2–10) that fits targetDots including quiet zone. */
 export function zebraQrMagnification(targetDots, dataLength = 40) {
-  const modules = estimateZebraQrModules(dataLength);
+  const modules = zebraQrSymbolModules(dataLength);
   const maxDots = Math.max(48, Math.floor(Number(targetDots) || mmToDots(QR_SIZE_MM)));
   let mag = 10;
   while (mag > 2 && modules * mag > maxDots) mag -= 1;
@@ -259,9 +266,8 @@ export function zebraCode128ModuleDots(sku, barcodeWidthDots) {
 
 /** Printed QR side length in dots (^BQ model 2) — layout must reserve this, not the target box alone. */
 export function zebraQrPrintedDots(targetDots, dataLength = 40) {
-  const modules = estimateZebraQrModules(dataLength);
   const mag = zebraQrMagnification(targetDots, dataLength);
-  return modules * mag;
+  return zebraQrSymbolModules(dataLength) * mag;
 }
 
 export function zebraQrPrintedMm(targetWidthMm, dataLength = 40, dpi = 203) {

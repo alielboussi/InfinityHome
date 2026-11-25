@@ -1,9 +1,7 @@
 import db from '../dataClient';
 import { normalizeQuotationItemRow } from '../utils/quotationDisplay';
-import {
-  buildFactoryOrderWhatsAppMessage,
-  generateFactoryOrderBilingualPdf,
-} from '../utils/quoteFactoryOrderPdf';
+import { buildFactoryOrderWhatsAppMessage } from '../utils/quoteFactoryOrderPdf';
+import generateQuotePdf from '../quotespdf';
 import {
   fetchQuoteProductionRouting,
   saveQuoteProductionRoute,
@@ -47,8 +45,8 @@ function titleCaseWords(text) {
  * Full "Send Order" action from `/quotes-board` (and Quotationer list view):
  * 1. Loads quote, items, units, customer contact, and routing (`upholstery` | `carpentry`).
  * 2. Sends the quote order to the Upholstery or Carpentry mobile app (`sendQuoteToWarehouseProduction`).
- * 3. Builds the bilingual (English + Arabic) no-price A4 PDF and sends it with the template message
- *    to Factory New plus Upholstery / Carpentry production groups (PDF caption),
+ * 3. Builds the priced customer quotation PDF (same as Hassan’s quote PDF) and sends it with the
+ *    template message to Factory New plus Upholstery / Carpentry production groups,
  *    or Aluminum Production when route is aluminum.
  */
 export async function executeSendQuoteOrder(quoteRowOrId, { fallbackRoute = '', route: presetRoute = '' } = {}) {
@@ -130,19 +128,19 @@ export async function executeSendQuoteOrder(quoteRowOrId, { fallbackRoute = '', 
     items: enrichedItems,
   });
 
-  const { blob } = await generateFactoryOrderBilingualPdf(
+  const blob = await generateQuotePdf(
     {
       ...quoteRow,
       customer_name: customerName,
       customer_phone: customerPhone,
     },
     enrichedItems,
-    { route },
+    { mode: 'blob' },
   );
 
   const safeQuoteNum = String(quoteRow.quote_number || qid).replace(/[^a-zA-Z0-9#_-]/g, '_');
   const safeCust = (customerName || 'Customer').replace(/[^a-zA-Z0-9_-]/g, '_') || 'Customer';
-  const pdfFilename = `Order_${safeQuoteNum}_${safeCust}.pdf`;
+  const pdfFilename = `${safeCust}_Quote_${safeQuoteNum}.pdf`;
 
   let pdfBase64 = '';
   try {
@@ -150,7 +148,7 @@ export async function executeSendQuoteOrder(quoteRowOrId, { fallbackRoute = '', 
   } catch (readErr) {
     throw new Error(`PDF: ${readErr?.message || readErr}`);
   }
-  if (!pdfBase64) throw new Error('PDF: empty factory order document');
+  if (!pdfBase64) throw new Error('PDF: empty quotation document');
 
   try {
     await sendFactoryOrderWhatsApp({
