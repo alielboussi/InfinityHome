@@ -42,10 +42,13 @@ try {
   assert(factoryMsg.includes('production order'), 'factory order WhatsApp must name production order');
   assert(factoryMsg.includes('CAT (GMT+2)'), 'factory order WhatsApp must include CAT time');
   const notify = read('api/notify.js');
+  assert(!notify.includes('assertQuoteArabicReadyForFactoryPdfWhatsApp'), 'WhatsApp Send Order must not depend on Gemini Arabic');
   assert(notify.includes("if (r === 'carpentry') return ['factoryNew', 'productionCarpentry']"), 'carpentry orders must go to carpentry production group');
   assert(notify.includes("if (r === 'upholstery') return ['factoryNew', 'production']"), 'upholstery orders must go to upholstery production group');
 
   const send = read('src/services/sendQuoteOrderFlow.js');
+  assert(send.includes('generateQuotePdf'), 'Send Order WhatsApp must attach the priced quotation PDF');
+  assert(!send.includes('generateFactoryOrderBilingualPdf'), 'Send Order WhatsApp must not attach the Arabic factory PDF');
   assert(send.includes('assertCustomerOrderCatalogLines'), 'send order must enforce catalog-only customer lines');
   assert(send.includes('assertShowroomOrderFloor2Lines'), 'send order must enforce Floor 2 showroom lines');
   assert(send.includes('assertCustomerOrderZambiaPhone'), 'send order must enforce Zambia phone');

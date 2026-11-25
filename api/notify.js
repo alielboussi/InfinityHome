@@ -3931,27 +3931,11 @@ async function handleWhatsAppFactoryOrder(body) {
   }
 
   const quoteIdForPdf = String(body.quote_id || body.quoteId || '').trim();
-  if (documentLink) {
-    if (!quoteIdForPdf) {
-      const err = new Error('quote_id is required when sending a factory order PDF to WhatsApp.');
-      err.status = 400;
-      err.stage = 'validate';
-      throw err;
-    }
-    try {
-      const { getDataClient } = await import('../server/lib/getDataClient.js');
-      const { assertQuoteArabicReadyForFactoryPdfWhatsApp } = await import('../server/lib/quoteFactoryOrderArabicGate.js');
-      const db = getDataClient();
-      if (db) {
-        await assertQuoteArabicReadyForFactoryPdfWhatsApp(db, quoteIdForPdf);
-      }
-    } catch (gateErr) {
-      const err = new Error(gateErr?.message || 'Arabic translation is not ready for this factory order PDF.');
-      err.status = gateErr?.status || 400;
-      err.stage = 'arabic';
-      err.code = gateErr?.code || 'arabic_incomplete';
-      throw err;
-    }
+  if (documentLink && !quoteIdForPdf) {
+    const err = new Error('quote_id is required when sending a factory order PDF to WhatsApp.');
+    err.status = 400;
+    err.stage = 'validate';
+    throw err;
   }
 
   const whatsappKinds = resolveFactoryOrderWhatsAppKinds(

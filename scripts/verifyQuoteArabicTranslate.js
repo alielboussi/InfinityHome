@@ -24,12 +24,12 @@ if (!gateLib.includes('assertQuoteArabicReadyForFactoryPdfWhatsApp')) {
   console.error('[verifyQuoteArabicTranslate] missing factory PDF Arabic gate');
   process.exit(1);
 }
-if (!notify.includes('assertQuoteArabicReadyForFactoryPdfWhatsApp')) {
-  console.error('[verifyQuoteArabicTranslate] notify must gate PDF WhatsApp');
+if (notify.includes('assertQuoteArabicReadyForFactoryPdfWhatsApp')) {
+  console.error('[verifyQuoteArabicTranslate] WhatsApp factory send must not block on Arabic translation');
   process.exit(1);
 }
-if (!quoteProd.includes('assertQuoteArabicReadyForFactoryPdfWhatsApp')) {
-  console.error('[verifyQuoteArabicTranslate] quote-production must gate PDF WhatsApp');
+if (quoteProd.includes('assertQuoteArabicReadyForFactoryPdfWhatsApp')) {
+  console.error('[verifyQuoteArabicTranslate] deliver-factory-order must not block on Arabic translation');
   process.exit(1);
 }
 if (!factoryPdf.includes('translateQuoteStringsToArabicComplete')) {

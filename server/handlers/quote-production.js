@@ -92,16 +92,9 @@ export default async function handler(req, res) {
       const hasPdf = Boolean(pdfUrl || pdfBase64);
       const quoteIdForWa = String(body.quote_id || body.quoteId || '').trim();
 
-      if (hasPdf) {
-        if (!quoteIdForWa) {
-          res.status(400).json({ ok: false, error: 'quote_id is required when sending a factory order PDF to WhatsApp.' });
-          return;
-        }
-        const skipArabicRecheck = body.factory_order_pdf_built === true || body.factoryOrderPdfBuilt === true;
-        if (!skipArabicRecheck) {
-          const { assertQuoteArabicReadyForFactoryPdfWhatsApp } = await import('../lib/quoteFactoryOrderArabicGate.js');
-          await assertQuoteArabicReadyForFactoryPdfWhatsApp(db, quoteIdForWa);
-        }
+      if (hasPdf && !quoteIdForWa) {
+        res.status(400).json({ ok: false, error: 'quote_id is required when sending a factory order PDF to WhatsApp.' });
+        return;
       }
 
       if (!pdfUrl && pdfBase64) {

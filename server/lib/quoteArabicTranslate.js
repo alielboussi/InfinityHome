@@ -510,6 +510,38 @@ function geminiTranslateModelOrder() {
   return ['gemini-3.5-flash-lite', 'gemini-2.5-flash', 'gemini-3.8-flash'];
 }
 
+let listedGeminiTranslateModelsCache = { at: 0, models: [] };
+
+async function listLiveGeminiFlashTranslateModels(apiKey) {
+  const now = Date.now();
+  if (listedGeminiTranslateModelsCache.models.length && now - listedGeminiTranslateModelsCache.at < 10 * 60 * 1000) {
+    return listedGeminiTranslateModelsCache.models;
+  }
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`,
+  );
+  if (!res.ok) return [];
+  const payload = await res.json().catch(() => ({}));
+  const models = (payload.models || [])
+    .filter((m) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+    .map((m) => String(m.name || '').replace(/^models\//, ''))
+    .filter((name) => /flash/i.test(name) && !/embed|image|tts|audio|veo/i.test(name));
+  listedGeminiTranslateModelsCache = { at: now, models };
+  return models;
+}
+
+async function resolveGeminiTranslateModels(apiKey) {
+  const preferred = geminiTranslateModelOrder();
+  try {
+    const live = await listLiveGeminiFlashTranslateModels(apiKey);
+    const extra = live.filter((m) => !preferred.includes(m));
+    extra.sort((a, b) => Number(/lite/i.test(b)) - Number(/lite/i.test(a)) || a.localeCompare(b));
+    return extra.length ? [...preferred, ...extra] : preferred;
+  } catch {
+    return preferred;
+  }
+}
+
 function isGeminiModelUnavailableError(message, status) {
   const m = String(message || '').toLowerCase();
   if (status === 404) return true;
@@ -611,7 +643,7 @@ async function geminiTranslatePhrasesToArabic(phrases) {
   if (!apiKey) return {};
 
   const cappedList = list.slice(0, 56);
-  const models = geminiTranslateModelOrder();
+  const models = await resolveGeminiTranslateModels(apiKey);
   const out = {};
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), GEMINI_TRANSLATE_MAX_MS);
@@ -647,7 +679,10 @@ async function geminiTranslatePhrasesToArabic(phrases) {
         if (batchDone) break;
       }
       if (!batchDone && batchErr) {
-        throw new Error(humanizeGeminiTranslateError(batchErr?.message || batchErr));
+        console.warn(
+          '[translateStringsToArabicServer] Gemini batch skipped:',
+          humanizeGeminiTranslateError(batchErr?.message || batchErr),
+        );
       }
     }
     return out;
