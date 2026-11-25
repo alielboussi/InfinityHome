@@ -22,6 +22,9 @@ function assert(cond, msg) {
 
 try {
   assertZambiaNationalPhone('097123456', '+260');
+  assertZambiaNationalPhone('+260966898777', '+260');
+  assertZambiaNationalPhone('0966898777', '+260');
+  assertZambiaNationalPhone('+2600966898777', '+260');
   let threw = false;
   try {
     assertZambiaNationalPhone('09712345', '+260');

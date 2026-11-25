@@ -11,11 +11,20 @@ export function stripPhoneToDigits(raw) {
 
 export function zambiaNationalDigits(raw, prefix = '') {
   let digits = stripPhoneToDigits(raw);
+  if (digits.startsWith('00')) digits = digits.slice(2);
   const prefixDigits = stripPhoneToDigits(prefix);
-  if (prefixDigits && digits.startsWith(prefixDigits)) {
-    digits = digits.slice(prefixDigits.length);
-  } else if (digits.startsWith('260')) {
+  if (prefixDigits === '243' || digits.startsWith('243')) {
+    if (prefixDigits && digits.startsWith(prefixDigits)) {
+      digits = digits.slice(prefixDigits.length);
+    }
+    return digits;
+  }
+  while (digits.startsWith('260')) {
     digits = digits.slice(3);
+  }
+  // Local ZM numbers are often stored as 09xxxxxxxx (trunk 0 + 9 digits).
+  if (digits.length === 10 && digits.startsWith('0')) {
+    digits = digits.slice(1);
   }
   return digits;
 }
