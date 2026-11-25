@@ -63,7 +63,7 @@ export function assertShowroomOrderFloor2Lines(items = []) {
 export function assertCustomerOrderZambiaPhone(phone, prefix = '+260') {
   const raw = String(phone || '').trim();
   if (!raw) {
-    const err = new Error('A Zambian phone number has 9 digits excluding the country code.');
+    const err = new Error('This customer has no phone number. Add a 9-digit Zambian number, then Send Order.');
     err.code = 'zambia_phone_digits';
     throw err;
   }

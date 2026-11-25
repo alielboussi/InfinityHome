@@ -7,6 +7,8 @@ export const PRODUCTION_PRESET_WAREHOUSE_CATEGORY_BY_PRESET = Object.freeze({
   '2 Seater': '2 Seaters',
   'Single Seater': 'Single Seaters',
   'Lounge Chair': 'Lounge Chairs',
+  'Stackable Chairs': 'Stackable Chairs',
+  'Stackable Chair': 'Stackable Chairs',
   Curtains: 'Curtains',
   Pillows: 'Pillows',
   'Coffee Table': 'Coffee Tables',

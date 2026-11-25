@@ -1,14 +1,6 @@
 import { buildFactoryOrderWhatsAppMessage } from '../../src/utils/quoteFactoryOrderPdf.js';
 import { getQuoteProductionRouting } from './quoteProductionRouting.js';
-
-async function resolveCustomerContact(sb, customerId) {
-  const cid = String(customerId || '').trim();
-  if (!cid) return { name: '', phone: '' };
-  const { data: cust } = await sb.from('customers').select('name, phone').eq('id', cid).maybeSingle();
-  if (cust?.name) return { name: cust.name, phone: cust.phone || '' };
-  const { data: qc } = await sb.from('quote_customers').select('name, phone').eq('id', cid).maybeSingle();
-  return { name: qc?.name || '', phone: qc?.phone || '' };
-}
+import { resolveQuoteOrderCustomerContact } from '../../src/utils/quoteOrderCustomerContact.js';
 
 /**
  * Orders app Send Order — text + route to Factory New or Aluminum WhatsApp group (PDF optional).
@@ -30,7 +22,7 @@ export async function deliverQuoteFactoryOrderWhatsAppText(sb, quoteId) {
     throw new Error('Choose Carpentry, Upholstery, or Aluminum before sending the order.');
   }
 
-  const customer = await resolveCustomerContact(sb, quote.customer_id);
+  const customer = await resolveQuoteOrderCustomerContact(sb, quote, routing?.metadata);
   const message = buildFactoryOrderWhatsAppMessage({
     route,
     customerName: customer.name,

@@ -17,6 +17,7 @@ import {
   assertCustomerOrderZambiaPhone,
 } from '../utils/quoteSendOrderValidate';
 import { isQuoteShowroomOrderFromRouting } from '../utils/quoteShowroomOrder';
+import { resolveQuoteOrderCustomerContact } from '../utils/quoteOrderCustomerContact';
 
 const VALID_ROUTES = new Set(['carpentry', 'upholstery', 'aluminum']);
 
@@ -76,16 +77,9 @@ export async function executeSendQuoteOrder(quoteRowOrId, { fallbackRoute = '', 
     routing = await saveQuoteProductionRoute(qid, route);
   }
 
-  let customerName = '';
-  let customerPhone = '';
-  if (quoteRow.customer_id) {
-    const [{ data: cust }, { data: qc }] = await Promise.all([
-      db.from('customers').select('name, phone').eq('id', quoteRow.customer_id).maybeSingle(),
-      db.from('quote_customers').select('name, phone').eq('id', quoteRow.customer_id).maybeSingle(),
-    ]);
-    customerName = titleCaseWords(cust?.name || qc?.name || '');
-    customerPhone = String(cust?.phone || qc?.phone || '').trim();
-  }
+  const contact = await resolveQuoteOrderCustomerContact(db, quoteRow, routing?.metadata);
+  const customerName = titleCaseWords(contact.name);
+  const customerPhone = String(contact.phone || '').trim();
 
   const qpIds = [...new Set((rawItems || []).map((i) => i.quote_product_id).filter(Boolean))];
   const productMap = new Map();

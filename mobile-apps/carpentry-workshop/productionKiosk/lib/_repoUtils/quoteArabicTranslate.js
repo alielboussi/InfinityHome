@@ -28,6 +28,8 @@ export const ARABIC_TERMS = Object.freeze({
   'Walk In': 'زبون مباشر',
   'Walk in': 'زبون مباشر',
   'walk in': 'زبون مباشر',
+  'Stackable Chairs': 'كراسي الحفلات',
+  'Stackable Chair': 'كراسي الحفلات',
 
   Granite: 'جرانيت',
   'Quartz Countertop': 'سطح كوارتز',
@@ -165,6 +167,7 @@ export const WORD_FALLBACKS = [
   [/\b3\s*seater\b/gi, 'كنبة 3 مقاعد'],
   [/\b2\s*seater\b/gi, 'كنبة مقعدين'],
   [/\b(single|1)\s*seater\b/gi, 'كرسي مفرد'],
+  [/\bstackable\s+chairs?\b/gi, 'كراسي الحفلات'],
   [/\blounge\s+chair(s)?\b/gi, 'كرسي استرخاء'],
   [/\bcorner\s+sofa\b/gi, 'كنبة زاوية (ركنة)'],
   [/\bl\s*shape\b/gi, 'ركنة حرف L'],
