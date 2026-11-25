@@ -22,6 +22,69 @@ function repoSrcLooksVendored() {
   );
 }
 
+function filesAreIdentical(src, dest) {
+  try {
+    const a = fs.statSync(src);
+    const b = fs.statSync(dest);
+    if (a.size !== b.size) return false;
+    return fs.readFileSync(src).equals(fs.readFileSync(dest));
+  } catch {
+    return false;
+  }
+}
+
+const RETRYABLE_COPY_CODES = new Set(['EBUSY', 'EPERM', 'EACCES', 'UNKNOWN']);
+
+function sleep(ms) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) { /* sync wait — postinstall only */ }
+}
+
+/** Windows-safe overwrite (AV/indexer/junctions break copyFileSync). */
+function copyFileOverwrite(src, dest) {
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  try {
+    if (fs.realpathSync(src) === fs.realpathSync(dest)) return;
+  } catch {
+    /* dest may not exist */
+  }
+  if (fs.existsSync(dest) && filesAreIdentical(src, dest)) return;
+
+  const body = fs.readFileSync(src);
+  const tmp = `${dest}.materialize-${process.pid}-${Date.now()}.tmp`;
+  const attempt = () => {
+    fs.writeFileSync(tmp, body);
+    if (fs.existsSync(dest)) {
+      try {
+        fs.chmodSync(dest, 0o666);
+      } catch { /* ignore */ }
+      try {
+        fs.unlinkSync(dest);
+      } catch {
+        fs.rmSync(dest, { force: true });
+      }
+    }
+    fs.renameSync(tmp, dest);
+  };
+
+  let lastErr;
+  for (let i = 0; i < 6; i += 1) {
+    try {
+      attempt();
+      return;
+    } catch (err) {
+      lastErr = err;
+      try {
+        if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
+      } catch { /* ignore */ }
+      const code = String(err?.code || '').toUpperCase();
+      if (!RETRYABLE_COPY_CODES.has(code) || i >= 5) break;
+      sleep(80 * (i + 1));
+    }
+  }
+  throw lastErr;
+}
+
 function rmDeep(targetPath) {
   if (!fs.existsSync(targetPath)) return;
   try {
@@ -65,7 +128,7 @@ function mergeCatalogSharedFromGit() {
     const dest = path.join(sharedPath, suffix);
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     if (fs.existsSync(src)) {
-      fs.copyFileSync(src, dest);
+      copyFileOverwrite(src, dest);
       copied += 1;
       continue;
     }
@@ -112,7 +175,7 @@ function mergeCatalogSharedFromUploadSnapshot() {
       const dest = path.join(sharedPath, rel);
       fs.mkdirSync(path.dirname(dest), { recursive: true });
       if (!fs.existsSync(dest) || fs.readFileSync(dest).compare(fs.readFileSync(src)) !== 0) {
-        fs.copyFileSync(src, dest);
+        copyFileOverwrite(src, dest);
         merged += 1;
       }
     }
@@ -226,7 +289,7 @@ function vendorCatalogRepoSrc() {
     const rel = path.relative(repoSrc, srcFile);
     const dest = path.join(vendorRoot, rel);
     fs.mkdirSync(path.dirname(dest), { recursive: true });
-    fs.copyFileSync(srcFile, dest);
+    copyFileOverwrite(srcFile, dest);
 
     const text = fs.readFileSync(srcFile, 'utf8');
     RELATIVE_SRC_IMPORT_RE.lastIndex = 0;
