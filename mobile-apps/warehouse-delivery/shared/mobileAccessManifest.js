@@ -1,6 +1,6 @@
 /**
- * Warehouse Catalog mobile app — screens and permission axes.
- * Keep in sync with src/mobile/mobileAccessManifest.js (web /user-access + CI).
+ * Warehouse Catalog mobile app — screens and permission axes (web /user-access).
+ * When a new screen ships in the APK, register it here AND copy to mobile-apps/shared/mobileAccessManifest.js.
  *
  * Permission values: 'allow' | 'deny' (default deny until admin enables).
  */
@@ -213,7 +213,6 @@ export function isWarehouseFloor2CreateSetAllowed(grant, email) {
 /** Screens that can appear as buttons on the mobile dashboard. */
 export const MOBILE_DASHBOARD_NAV_SCREEN_IDS = Object.freeze([
   'warehouse_products',
-  'warehouse_floor_2',
   'warehouse_farm_1',
   'warehouse_storeroom_1',
   'warehouse_storeroom_2',
@@ -235,15 +234,15 @@ export const MOBILE_SCREENS = Object.freeze([
   },
   {
     id: 'warehouse_products',
-    label: 'Floor 1',
-    description: 'Warehouse Floor 1 products and sets (expand sets for component products and packets)',
+    label: 'Floors',
+    description: 'Floor 1 and Floor 2 stock on one product grid (Floor 1 photos; packets, print, and image upload)',
     permissionMatrix: true,
   },
   {
     id: 'warehouse_floor_2',
-    label: 'Floor 2',
-    description: 'Warehouse Floor 2 WIP products — grid view, stock increase, and photo import',
-    permissionMatrix: true,
+    label: 'Floor 2 (legacy)',
+    description: 'Merged into Floors — kept for old grants',
+    permissionMatrix: false,
     supportsLocationStockAndPhoto: true,
   },
   {
@@ -398,6 +397,11 @@ export const UPHOLSTERY_APP_SCREENS = Object.freeze([
     id: 'upholstery_manufacture',
     label: 'Manufacture',
     description: 'Start upholstery manufacture and variant inlay',
+  },
+  {
+    id: 'upholstery_floor1_products',
+    label: 'Floor 1',
+    description: 'Floor 1 products with Floor 1 photos, Floor 1 qty, category filter, and search',
   },
   {
     id: 'upholstery_orders',
@@ -670,7 +674,13 @@ export function canMobileScreenView(grant, screenId) {
 
   if (WAREHOUSE_PRODUCTS_CHILD_SCREENS.includes(screenId)) {
     return isMobileScreenAccessAllowed(grant, 'warehouse_products')
+      || isMobileScreenAccessAllowed(grant, 'warehouse_floor_2')
       || isMobileScreenAccessAllowed(grant, 'warehouse_incomplete_products');
+  }
+
+  if (screenId === 'warehouse_floor_2' || screenId === 'warehouse_products') {
+    return isMobileScreenAccessAllowed(grant, 'warehouse_products')
+      || isMobileScreenAccessAllowed(grant, 'warehouse_floor_2');
   }
 
   if (screenId === 'warehouse_incomplete_products') {
@@ -708,7 +718,13 @@ export function getMobileDashboardNavItems(grant, userEmail) {
   return MOBILE_DASHBOARD_NAV_SCREEN_IDS
     .map((id) => MOBILE_SCREENS.find((s) => s.id === id))
     .filter(Boolean)
-    .filter((screen) => isMobileScreenAccessAllowed(grant, screen.id))
+    .filter((screen) => {
+      if (screen.id === 'warehouse_products') {
+        return isMobileScreenAccessAllowed(grant, 'warehouse_products')
+          || isMobileScreenAccessAllowed(grant, 'warehouse_floor_2');
+      }
+      return isMobileScreenAccessAllowed(grant, screen.id);
+    })
     .map((screen) => ({
       screenId: screen.id,
       label: screen.label,
@@ -764,6 +780,13 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
     const allowed = isMobileScreenAccessAllowed(merged, screen.id);
     merged.screens[screen.id] = buildMobileScreenAccessRow(allowed);
   });
+
+  if (
+    isMobileScreenAccessAllowed(merged, 'warehouse_floor_2')
+    && !isMobileScreenAccessAllowed(merged, 'warehouse_products')
+  ) {
+    merged.screens.warehouse_products = buildMobileScreenAccessRow(true);
+  }
 
   const productsAllowed = isMobileScreenAccessAllowed(merged, 'warehouse_products');
   const incompleteProductsAllowed = isMobileScreenAccessAllowed(merged, 'warehouse_incomplete_products');

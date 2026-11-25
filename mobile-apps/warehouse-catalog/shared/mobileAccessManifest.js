@@ -399,6 +399,11 @@ export const UPHOLSTERY_APP_SCREENS = Object.freeze([
     description: 'Start upholstery manufacture and variant inlay',
   },
   {
+    id: 'upholstery_floor1_products',
+    label: 'Floor 1',
+    description: 'Floor 1 products with Floor 1 photos, Floor 1 qty, category filter, and search',
+  },
+  {
     id: 'upholstery_orders',
     label: 'Orders',
     description: 'Unified queue: Hassan quote orders, manufacture jobs, and repairs (badges on each row)',

@@ -30,15 +30,7 @@ import { attachCatalogProductPhoto } from '../shared/catalogPhotoApi';
 import { pickCatalogProductPhotoFromLibrary } from '../lib/pickCatalogProductPhoto';
 import { prepareCatalogPhotoForUpload } from '../shared/prepareCatalogPhotoUpload';
 import { isMattressCatalogProductName } from '../shared/repoSrc/utils/isMattressCatalogProductName.js';
-
-function floor1CatalogImageUri(assembly) {
-  const url = String(assembly?.image_url || '').trim();
-  if (!url) return '';
-  const meta = assembly?.metadata && typeof assembly.metadata === 'object' ? assembly.metadata : {};
-  const wip = String(meta.floor2_wip_image_url || '').trim();
-  if (wip && wip === url) return '';
-  return url;
-}
+import { floor1CatalogImageUri } from '../shared/floor1CatalogImageUri';
 import { buildPacketsByAssembly } from '../shared/warehousePacketGrouping';
 import { useWarehouseCatalog } from '../shared/WarehouseCatalogContext';
 import { catalogStockMaps } from '../shared/warehouseCatalogStockMaps';

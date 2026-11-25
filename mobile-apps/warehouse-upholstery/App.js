@@ -12,6 +12,7 @@ import { useProductionPushNotifications } from './hooks/useProductionPushNotific
 import DashboardScreen from './screens/DashboardScreen';
 import CreateScreen from './screens/CreateScreen';
 import ManufactureScreen from './screens/ManufactureScreen';
+import Floor1ProductsScreen from './screens/Floor1ProductsScreen';
 import JobsScreen from './screens/JobsScreen';
 import UpholsteryQuotesScreen from './screens/UpholsteryQuotesScreen';
 import UpholsteryQuoteDetailScreen from './screens/UpholsteryQuoteDetailScreen';
@@ -67,6 +68,7 @@ function MainStack({ navigationRef }) {
         )}
       </Stack.Screen>
       <Stack.Screen name="Create" options={{ headerShown: false }} component={CreateScreen} />
+      <Stack.Screen name="Floor1Products" options={{ headerShown: false }} component={Floor1ProductsScreen} />
       <Stack.Screen name="Manufacture" options={{ headerShown: false }}>
         {(props) => (
           <ManufactureScreen

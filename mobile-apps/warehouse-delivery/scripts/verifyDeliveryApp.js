@@ -349,6 +349,36 @@ try {
     const re = new RegExp(`${key}:\\s*\\{[\\s\\S]*?\\bar:\\s*'`, 'm');
     assert(re.test(hubI18n), `delivery i18n key ${key} must include Arabic (ar)`);
   }
+  const definedUiKeys = new Set();
+  const uiClose = hubI18n.indexOf('\nconst PRESET_I18N');
+  const uiBlock = uiClose === -1 ? hubI18n : hubI18n.slice(0, uiClose);
+  for (const m of uiBlock.matchAll(/\n  ([A-Za-z0-9_]+):\s*\{/g)) definedUiKeys.add(m[1]);
+  const usedUiKeys = new Set(['filterAll']);
+  const kitRoot = path.join(appRoot, 'deliveryKit');
+  function walkJs(dir, acc = []) {
+    if (!fs.existsSync(dir)) return acc;
+    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, ent.name);
+      if (ent.isDirectory() && ent.name !== 'node_modules') walkJs(p, acc);
+      else if (/\.js$/.test(ent.name)) acc.push(p);
+    }
+    return acc;
+  }
+  const scanFiles = [
+    ...walkJs(kitRoot),
+    ...walkJs(path.join(appRoot, 'screens')),
+  ];
+  const appJsPath = path.join(appRoot, 'App.js');
+  if (fs.existsSync(appJsPath)) scanFiles.push(appJsPath);
+  for (const file of scanFiles) {
+    const body = fs.readFileSync(file, 'utf8');
+    for (const m of body.matchAll(/tUi\(\s*['"]([^'"]+)['"]/g)) usedUiKeys.add(m[1]);
+  }
+  const missingUi = [...usedUiKeys].filter((k) => !definedUiKeys.has(k)).sort();
+  assert(
+    missingUi.length === 0,
+    `tUi keys missing from UI_STRINGS (raw keys on device): ${missingUi.join(', ')}`,
+  );
   assert(sig.includes('customerLabels') && sig.includes('deliveryCustomerDriver'), 'Kitwe signature must localize customer driver section');
   assert(
     !fs.readFileSync(path.join(appRoot, 'screens', 'DashboardScreen.js'), 'utf8').includes('forceArabic'),

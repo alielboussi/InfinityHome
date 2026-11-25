@@ -20,6 +20,9 @@ assert(read('mobile-apps/carpentry-workshop/screens/DashboardScreen.js').include
 assert(!read('mobile-apps/carpentry-workshop/screens/DashboardScreen.js').includes("navigate('Quotes')"), 'Carpentry dashboard must not link separate Quotes tile');
 assert(read('mobile-apps/carpentry-workshop/screens/JobsScreen.js').includes("item._kind === 'repair'"), 'Carpentry Jobs screen must list repairs in unified inbox');
 assert(read('mobile-apps/warehouse-upholstery/screens/DashboardScreen.js').includes('dashUnifiedOrders'), 'Upholstery dashboard must expose unified Orders tile');
+assert(read('mobile-apps/warehouse-upholstery/screens/DashboardScreen.js').includes('dashFloor1Products'), 'Upholstery dashboard must expose Floor 1 products tile');
+assert(read('mobile-apps/warehouse-upholstery/App.js').includes('Floor1Products'), 'Upholstery app must register Floor1Products');
+assert(read('src/mobile/mobileAccessManifest.js').includes('upholstery_floor1_products'), 'User access must list upholstery_floor1_products');
 assert(read('mobile-apps/warehouse-delivery/screens/DashboardScreen.js').includes('DeliveryUnifiedQueue'), 'Delivery dashboard must open unified delivery queue');
 assert(read('mobile-apps/warehouse-delivery/deliveryKit/screens/DeliveryUnifiedQueueScreen.js').includes("_kind: 'repair'"), 'Delivery unified queue must merge repairs');
 assert(read('mobile-apps/shared/lib/workshopOrdersHubAccess.js').includes('isWorkshopOrdersHubAllowed'), 'Shared workshop orders hub access helper required');

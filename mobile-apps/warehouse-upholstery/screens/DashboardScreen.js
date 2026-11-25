@@ -80,6 +80,13 @@ export default function DashboardScreen({
       onPress: () => navigation.navigate('Manufacture'),
     },
     {
+      key: 'floor1',
+      screenId: 'upholstery_floor1_products',
+      icon: 'view-grid-outline',
+      title: tUi('dashFloor1Products', locale),
+      onPress: () => navigation.navigate('Floor1Products'),
+    },
+    {
       key: 'orders',
       screenId: 'upholstery_orders',
       hubScreenIds: UPHOLSTERY_ORDERS_HUB_SCREEN_IDS,

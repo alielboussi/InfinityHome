@@ -73,6 +73,7 @@ const MOBILE_ASSEMBLY_FIELDS = [
   'thumbnail_url',
   'cover_image_url',
   'photo_url',
+  'metadata',
   'dim_length',
   'dim_width',
   'dim_height',
