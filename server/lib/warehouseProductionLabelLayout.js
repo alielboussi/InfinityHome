@@ -37,10 +37,11 @@ export const GAP_AFTER_NAME_BLOCK_MM = 1.55;
 export const BLOCK_GAP_MM = 1.15;
 /** Clearance between header rows so 10pt glyphs never overlap. */
 export const HEADER_CLEARANCE_MM = 1.15;
-export const MAX_QR_FOOTPRINT_MM = 28;
-export const MIN_QR_FOOTPRINT_MM = 18;
-/** Photo QR sits below Date/Time and fills leftover height. */
+export const MAX_QR_FOOTPRINT_MM = 34;
+export const MIN_QR_FOOTPRINT_MM = 24;
+/** Photo QR sits after Name (and optional rows), Date/Time below the QR. */
 export const GAP_BEFORE_QR_MM = 1.0;
+export const GAP_AFTER_QR_MM = 1.0;
 
 export const FIELD_LABELS = {
   sku: 'SKU:',
@@ -110,8 +111,7 @@ export function computeProductionLabelLayout({
   const skuRowMm = block.rowY;
   y = block.nextY;
 
-  const optionalDetailRows = [includeColorRow, includeBoxRow, includeDimensionsRow].filter(Boolean).length;
-  const nameValueMaxLines = optionalDetailRows >= 1 ? 1 : NAME_VALUE_MAX_LINES;
+  const nameValueMaxLines = 1;
   const gapAfterNameMm = Math.max(GAP_AFTER_NAME_BLOCK_MM, HEADER_CLEARANCE_MM);
   const rowTextMm = ROW_TEXT_MM;
   const blockGapMm = Math.max(BLOCK_GAP_MM, HEADER_CLEARANCE_MM);
@@ -141,22 +141,23 @@ export function computeProductionLabelLayout({
     y = block.nextY;
   }
 
-  block = advanceBlock(y, rowTextMm, blockGapMm);
-  const dateRowMm = block.rowY;
-  y = block.nextY;
-
-  block = advanceBlock(y, rowTextMm, blockGapMm);
-  const timeRowMm = block.rowY;
-
   const qrDataLen = Math.max(1, Math.floor(Number(imageQrDataLength) || DEFAULT_QR_PAYLOAD_LENGTH));
-  const qrBlockYMm = timeRowMm + rowTextMm + Math.max(HEADER_CLEARANCE_MM, GAP_BEFORE_QR_MM);
-  const remainingMm = heightMm - marginMm - qrBlockYMm - 0.4;
-  const capMm = Math.min(MAX_QR_FOOTPRINT_MM, Math.max(12, remainingMm));
+  const footerMm = rowTextMm * 2 + blockGapMm + 0.35;
+  const qrBlockYMm = y + Math.max(HEADER_CLEARANCE_MM, GAP_BEFORE_QR_MM);
+  const remainingMm = heightMm - marginMm - qrBlockYMm - footerMm - GAP_AFTER_QR_MM;
+  const capMm = Math.min(MAX_QR_FOOTPRINT_MM, Math.max(16, remainingMm));
   const mag = zebraQrMagnification(mmToDots(capMm, dpi), qrDataLen);
   const modules = estimateZebraQrModules(qrDataLen);
   const qrFootprintMm = (modules * mag * 25.4) / Number(dpi);
   const imageQrCenterMm = centerXMm;
   const imageQrLeftMm = centerXMm - qrFootprintMm / 2;
+
+  y = qrBlockYMm + qrFootprintMm + Math.max(blockGapMm, GAP_AFTER_QR_MM);
+  block = advanceBlock(y, rowTextMm, blockGapMm);
+  const dateRowMm = block.rowY;
+  y = block.nextY;
+  block = advanceBlock(y, rowTextMm, blockGapMm);
+  const timeRowMm = block.rowY;
 
   const zplFont = Math.round(FONT_PT * (dpi / 72));
   const companyFont = Math.round(COMPANY_FONT_PT * (dpi / 72));
@@ -209,7 +210,7 @@ export function computeProductionLabelLayout({
       nameValueHeight: toDots(nameBlockHeightMm),
       qrBlockY: toDots(qrBlockYMm),
       imageQrX: toDots(imageQrLeftMm),
-      qrSize: toDots(capMm),
+      qrSize: modules * mag,
       colorRowY: colorRowMm != null ? textTopDots(colorRowMm) : null,
       boxRowY: boxRowMm != null ? textTopDots(boxRowMm) : null,
       dimensionsRowY: dimensionsRowMm != null ? textTopDots(dimensionsRowMm) : null,

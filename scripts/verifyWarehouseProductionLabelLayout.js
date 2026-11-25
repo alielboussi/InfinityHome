@@ -25,14 +25,18 @@ async function main() {
       imageQrDataLength: qrLen,
     });
     assertProductionLabelFits(layout, LABEL_HEIGHT_MM, LABEL_MARGIN_MM);
-    const timeBottom = Number(layout.timeRowMm) + 3.4;
-    if (layout.qrBlockYMm < timeBottom + 1.1) {
-      throw new Error(`QR overlaps Date/Time: qrY=${layout.qrBlockYMm.toFixed(2)} timeBottom=${timeBottom.toFixed(2)}`);
+    const nameBottom = Number(layout.nameBlockTopMm) + Number(layout.nameBlockHeightMm);
+    if (layout.qrBlockYMm < nameBottom + 0.6) {
+      throw new Error(`QR overlaps Name: qrY=${layout.qrBlockYMm.toFixed(2)} nameBottom=${nameBottom.toFixed(2)}`);
+    }
+    const qrBottom = Number(layout.qrBlockYMm) + Number(layout.qrFootprintMm);
+    if (layout.dateRowMm < qrBottom + 0.7) {
+      throw new Error(`Date overlaps QR: dateY=${layout.dateRowMm.toFixed(2)} qrBottom=${qrBottom.toFixed(2)}`);
     }
   }
 
   const simple = computeProductionLabelLayout({ imageQrDataLength: qrLen });
-  if (simple.qrFootprintMm < 18) {
+  if (simple.qrFootprintMm < 22) {
     throw new Error(`Photo QR too small: ${simple.qrFootprintMm.toFixed(2)}mm`);
   }
 
