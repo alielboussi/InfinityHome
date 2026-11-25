@@ -38,36 +38,66 @@ function cleanDescriptionText(val) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-/**
- * Build the WhatsApp text message for Factory New (`120363201559496504@g.us`)
- * or Aluminum Production (`120363281191795439@g.us`) based on `route`:
- *
- * Department : قسم التنجيد / قسم النجارة (Arabic only on this line)
- * Customer Name: ...
- * Customer Phone Number: ...
- * Quote Date: DD/MM/YYYY
- * Quote Time: HH:MM (CAT, UTC+02:00)
- */
+function factoryOrderDepartmentEnglish(route) {
+  const r = String(route || '').trim().toLowerCase();
+  if (r === 'carpentry') return 'Carpentry';
+  if (r === 'aluminum') return 'Aluminum';
+  return 'Upholstery';
+}
+
+function factoryOrderItemLines(items = []) {
+  const rows = [];
+  for (const it of items || []) {
+    const name = String(
+      it?.name_override || it?.name || it?.product_name || it?.quote_product_name || '',
+    ).trim();
+    if (!name || name === '-') continue;
+    const qty = Math.max(1, Math.floor(Number(it?.quantity) || 1));
+    rows.push(`• ${name}  × ${qty}`);
+  }
+  return rows;
+}
+
 export function buildFactoryOrderWhatsAppMessage({
   route,
   customerName,
   customerPhone,
   createdAt,
+  sentAt,
+  quoteNumber,
+  items,
 } = {}) {
+  const deptEn = factoryOrderDepartmentEnglish(route);
   const deptAr = factoryOrderDepartmentArabic(route);
   const cName = String(customerName || '').trim() || '—';
   const cPhone = String(customerPhone || '').trim() || '—';
-  const stamp = createdAt || new Date().toISOString();
+  const stamp = sentAt || createdAt || new Date().toISOString();
   const quoteDate = formatZambiaDate(stamp);
-  const quoteTime = `${formatZambiaTime(stamp)} Central Africa Time (CAT), UTC+02:00`;
+  const quoteTime = `${formatZambiaTime(stamp)} CAT (GMT+2)`;
+  const quoteNo = String(quoteNumber || '').trim() || '—';
+  const divider = '────────────────────────';
+  const itemLines = factoryOrderItemLines(items);
 
-  return [
-    `Department : ${deptAr}`,
-    `Customer Name: ${cName}`,
-    `Customer Phone Number: ${cPhone}`,
-    `Quote Date: ${quoteDate}`,
-    `Quote Time: ${quoteTime}`,
-  ].join('\n');
+  const lines = [
+    'INFINITY HOME',
+    `${deptEn} production order`,
+    `Department: ${deptAr}`,
+    divider,
+    `Date: ${quoteDate}`,
+    `Time: ${quoteTime}`,
+    '',
+    `Quote: ${quoteNo}`,
+    `Customer: ${cName}`,
+    `Phone: ${cPhone}`,
+  ];
+  if (itemLines.length) {
+    lines.push('');
+    lines.push('Items');
+    lines.push(...itemLines);
+  }
+  lines.push(divider);
+  lines.push('Factory order PDF attached.');
+  return lines.join('\n');
 }
 
 async function getCompanySettings() {

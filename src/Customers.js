@@ -209,15 +209,31 @@ const Customers = () => {
     setEditingId(customer.id);
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (id, e) => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+    const cid = String(id || '').trim();
+    if (!cid) {
+      setError('This customer has no id, so it cannot be deleted.');
+      return;
+    }
     if (!window.confirm('Delete this customer?')) return;
     setSaving(true);
+    setError('');
     try {
-      const { error } = await db.from('customers').delete().eq('id', id);
+      const { error } = await db.from('customers').delete().eq('id', cid);
       if (error) throw error;
+      setSearchResults((prev) => (prev || []).filter((c) => String(c.id) !== cid));
+      setCustomers((prev) => (prev || []).filter((c) => String(c.id) !== cid));
+      if (editingId && String(editingId) === cid) {
+        setForm(initialForm);
+        setEditingId(null);
+      }
+      const term = searchTerm.trim();
+      if (term) await runSearch(term);
       fetchCustomers();
     } catch (err) {
-      setError('Failed to delete customer.');
+      setError(err?.message || 'Failed to delete customer.');
     } finally {
       setSaving(false);
     }
@@ -364,7 +380,7 @@ const Customers = () => {
                             </button>
                           )}
                           {canDelete && (
-                            <button type="button" className="delete-btn" onClick={() => handleDelete(customer.id)} disabled={saving}>
+                            <button type="button" className="delete-btn" onClick={(e) => handleDelete(customer.id, e)} disabled={saving}>
                               Delete
                             </button>
                           )}

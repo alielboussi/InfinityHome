@@ -3899,10 +3899,16 @@ export async function deliverWarehouseDeliveryGroupMessage(body) {
   return handleWhatsAppWarehouseDelivery(body);
 }
 
-export function resolveFactoryOrderWhatsAppKind(route) {
+export function resolveFactoryOrderWhatsAppKinds(route) {
   const r = String(route || '').trim().toLowerCase();
-  if (r === 'aluminum') return 'productionAluminum';
-  return 'factoryNew';
+  if (r === 'aluminum') return ['productionAluminum'];
+  if (r === 'carpentry') return ['factoryNew', 'productionCarpentry'];
+  if (r === 'upholstery') return ['factoryNew', 'production'];
+  return ['factoryNew'];
+}
+
+export function resolveFactoryOrderWhatsAppKind(route) {
+  return resolveFactoryOrderWhatsAppKinds(route)[0];
 }
 
 export async function deliverFactoryOrderGroupMessage(body) {
@@ -3948,10 +3954,26 @@ async function handleWhatsAppFactoryOrder(body) {
     }
   }
 
-  const whatsappKind = resolveFactoryOrderWhatsAppKind(body.route || body.production_route || body.productionRoute);
-  const routing = resolveDeliveryTargets(whatsappKind, null);
+  const whatsappKinds = resolveFactoryOrderWhatsAppKinds(
+    body.route || body.production_route || body.productionRoute,
+  );
+  const mergedTargets = [];
+  let routingMode = 'group';
+  let routingProvider = 'wasender';
+  for (const kind of whatsappKinds) {
+    const routing = resolveDeliveryTargets(kind, null);
+    if (!routing.targets.length) continue;
+    routingMode = routing.mode;
+    routingProvider = routing.provider;
+    mergedTargets.push(...routing.targets);
+  }
+  const routing = {
+    mode: routingMode,
+    provider: routingProvider,
+    targets: Array.from(new Set(mergedTargets)),
+  };
   if (!routing.targets.length) {
-    const envKey = GROUP_KEYS[whatsappKind] || 'WHATSAPP_FACTORY_NEW_GROUP_ID';
+    const envKey = whatsappKinds.map((k) => GROUP_KEYS[k] || k).join(' / ');
     const err = new Error(`WhatsApp env not configured (${envKey})`);
     err.status = 500;
     err.stage = 'env';

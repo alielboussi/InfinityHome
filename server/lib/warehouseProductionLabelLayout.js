@@ -37,10 +37,9 @@ export const GAP_AFTER_NAME_BLOCK_MM = 1.55;
 export const BLOCK_GAP_MM = 1.15;
 /** Clearance between header rows so 10pt glyphs never overlap. */
 export const HEADER_CLEARANCE_MM = 1.15;
-export const MAX_QR_FOOTPRINT_MM = 15.6;
-/** Lift photo QR and add space before Dims row so QR does not crowd dimensions text. */
-export const QR_LIFT_WHEN_DIMS_MM = 0;
-export const GAP_AFTER_QR_WHEN_DIMS_MM = 1.15;
+export const MAX_QR_FOOTPRINT_MM = 14.2;
+/** Photo QR sits below Date/Time so it cannot cover those rows. */
+export const GAP_BEFORE_QR_MM = 1.4;
 
 export const FIELD_LABELS = {
   sku: 'SKU:',
@@ -75,7 +74,9 @@ export function rowTextTopMm(rowStartMm, padMm = 0.35) {
 const DEFAULT_QR_PAYLOAD_LENGTH = 110;
 
 export function labelContentBottomMm(layout) {
-  return Number(layout?.timeRowMm || 0) + ROW_TEXT_MM;
+  const timeBottom = Number(layout?.timeRowMm || 0) + ROW_TEXT_MM;
+  const qrBottom = Number(layout?.qrBlockYMm || 0) + Number(layout?.qrFootprintMm || 0);
+  return Math.max(timeBottom, qrBottom);
 }
 
 export function assertProductionLabelFits(layout, heightMm = LABEL_HEIGHT_MM, marginMm = LABEL_MARGIN_MM) {
@@ -118,25 +119,6 @@ export function computeProductionLabelLayout({
   const nameBlockHeightMm = NAME_LINE_HEIGHT_MM * nameValueMaxLines;
   y = nameBlockTopMm + nameBlockHeightMm + gapAfterNameMm;
 
-  let qrBlockYMm = y;
-  if (includeDimensionsRow) {
-    const minQrY = nameBlockTopMm + nameBlockHeightMm + HEADER_CLEARANCE_MM;
-    qrBlockYMm = Math.max(minQrY, qrBlockYMm - QR_LIFT_WHEN_DIMS_MM);
-  }
-  const imageQrLeftMm = centerXMm - QR_SIZE_MM / 2;
-  const imageQrCenterMm = centerXMm;
-  const qrFootprintMm = Math.min(
-    MAX_QR_FOOTPRINT_MM,
-    Math.max(
-      QR_SIZE_MM,
-      zebraQrPrintedMm(QR_SIZE_MM, Math.max(1, Math.floor(Number(imageQrDataLength) || DEFAULT_QR_PAYLOAD_LENGTH)), dpi),
-    ),
-  );
-  const gapAfterQrMm = includeDimensionsRow
-    ? Math.max(HEADER_CLEARANCE_MM, GAP_AFTER_QR_WHEN_DIMS_MM)
-    : HEADER_CLEARANCE_MM;
-  y = qrBlockYMm + qrFootprintMm + gapAfterQrMm;
-
   let colorRowMm = null;
   if (includeColorRow) {
     block = advanceBlock(y, rowTextMm, blockGapMm);
@@ -164,6 +146,19 @@ export function computeProductionLabelLayout({
 
   block = advanceBlock(y, rowTextMm, blockGapMm);
   const timeRowMm = block.rowY;
+  y = block.nextY;
+
+  const qrDataLen = Math.max(1, Math.floor(Number(imageQrDataLength) || DEFAULT_QR_PAYLOAD_LENGTH));
+  const qrBlockYMm = y + Math.max(HEADER_CLEARANCE_MM, GAP_BEFORE_QR_MM);
+  const remainingMm = heightMm - marginMm - qrBlockYMm - 0.2;
+  const printedQrMm = zebraQrPrintedMm(QR_SIZE_MM, qrDataLen, dpi);
+  const qrFootprintMm = Math.min(
+    MAX_QR_FOOTPRINT_MM,
+    Math.max(10, printedQrMm),
+    Math.max(10, remainingMm),
+  );
+  const imageQrCenterMm = centerXMm;
+  const imageQrLeftMm = centerXMm - qrFootprintMm / 2;
 
   const zplFont = Math.round(FONT_PT * (dpi / 72));
   const companyFont = Math.round(COMPANY_FONT_PT * (dpi / 72));
@@ -216,7 +211,7 @@ export function computeProductionLabelLayout({
       nameValueHeight: toDots(nameBlockHeightMm),
       qrBlockY: toDots(qrBlockYMm),
       imageQrX: toDots(imageQrLeftMm),
-      qrSize: toDots(QR_SIZE_MM),
+      qrSize: toDots(qrFootprintMm),
       colorRowY: colorRowMm != null ? textTopDots(colorRowMm) : null,
       boxRowY: boxRowMm != null ? textTopDots(boxRowMm) : null,
       dimensionsRowY: dimensionsRowMm != null ? textTopDots(dimensionsRowMm) : null,
@@ -232,18 +227,27 @@ export function computeProductionLabelLayout({
   };
 }
 
-/** QR version proxy (model 2) from payload length — matches `zebraQrMagnification` sizing. */
+/** QR version modules (model 2, byte mode, EC M) — URLs need more modules than alphanumeric. */
 export function estimateZebraQrModules(dataLength = 40) {
-  return Math.max(21, Math.min(57, Math.ceil(Math.sqrt(Math.max(1, dataLength) * 12))));
+  const n = Math.max(1, Number(dataLength) || 1);
+  const byteCapM = [14, 26, 42, 62, 84, 106, 122, 152, 180, 213, 251, 287, 331, 374, 425];
+  let version = byteCapM.length;
+  for (let i = 0; i < byteCapM.length; i += 1) {
+    if (n <= byteCapM[i]) {
+      version = i + 1;
+      break;
+    }
+  }
+  return 21 + 4 * (version - 1);
 }
 
-/** Zebra ^BQ magnification so QR prints ~targetDots wide (model 2). Min 4 for scan density. */
+/** Zebra ^BQ magnification so printed QR fits the reserved box (mag 2–4). */
 export function zebraQrMagnification(targetDots, dataLength = 40) {
-  void targetDots;
   const modules = estimateZebraQrModules(dataLength);
-  const maxPrinted = Math.round((MAX_QR_FOOTPRINT_MM / 25.4) * 203);
+  const cap = Math.round((MAX_QR_FOOTPRINT_MM / 25.4) * 203);
+  const maxDots = Math.max(40, Math.min(Number(targetDots) || cap, cap));
   let mag = 4;
-  if (modules * mag > maxPrinted) mag = 3;
+  while (mag > 2 && modules * mag > maxDots) mag -= 1;
   return mag;
 }
 

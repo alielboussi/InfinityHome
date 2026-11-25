@@ -47,7 +47,8 @@ function titleCaseWords(text) {
  * 1. Loads quote, items, units, customer contact, and routing (`upholstery` | `carpentry`).
  * 2. Sends the quote order to the Upholstery or Carpentry mobile app (`sendQuoteToWarehouseProduction`).
  * 3. Builds the bilingual (English + Arabic) no-price A4 PDF and sends it with the template message
- *    to Factory New (upholstery/carpentry) or Aluminum Production WhatsApp group when route is aluminum.
+ *    to Factory New plus Upholstery / Carpentry production groups (PDF caption),
+ *    or Aluminum Production when route is aluminum.
  */
 export async function executeSendQuoteOrder(quoteRowOrId, { fallbackRoute = '', route: presetRoute = '' } = {}) {
   const quoteId = typeof quoteRowOrId === 'object' ? quoteRowOrId?.id : quoteRowOrId;
@@ -130,6 +131,9 @@ export async function executeSendQuoteOrder(quoteRowOrId, { fallbackRoute = '', 
     customerName,
     customerPhone,
     createdAt: quoteRow.created_at || new Date().toISOString(),
+    sentAt: new Date().toISOString(),
+    quoteNumber: quoteRow.quote_number,
+    items: enrichedItems,
   });
 
   const { blob } = await generateFactoryOrderBilingualPdf(

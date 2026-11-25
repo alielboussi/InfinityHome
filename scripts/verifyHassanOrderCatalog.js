@@ -37,6 +37,14 @@ try {
   assert(create.includes('Customer orders can only use products from Quotationer'), 'customer create must block Floor 2 products');
   assert(create.includes('assertZambiaNationalPhone'), 'customer phone must validate 9 national digits');
 
+  const factoryMsg = read('src/utils/quoteFactoryOrderPdf.js');
+  assert(factoryMsg.includes('INFINITY HOME'), 'factory order WhatsApp must use Infinity Home header');
+  assert(factoryMsg.includes('production order'), 'factory order WhatsApp must name production order');
+  assert(factoryMsg.includes('CAT (GMT+2)'), 'factory order WhatsApp must include CAT time');
+  const notify = read('api/notify.js');
+  assert(notify.includes("if (r === 'carpentry') return ['factoryNew', 'productionCarpentry']"), 'carpentry orders must go to carpentry production group');
+  assert(notify.includes("if (r === 'upholstery') return ['factoryNew', 'production']"), 'upholstery orders must go to upholstery production group');
+
   const send = read('src/services/sendQuoteOrderFlow.js');
   assert(send.includes('assertCustomerOrderCatalogLines'), 'send order must enforce catalog-only customer lines');
   assert(send.includes('assertShowroomOrderFloor2Lines'), 'send order must enforce Floor 2 showroom lines');

@@ -25,6 +25,10 @@ async function main() {
       imageQrDataLength: qrLen,
     });
     assertProductionLabelFits(layout, LABEL_HEIGHT_MM, LABEL_MARGIN_MM);
+    const timeBottom = Number(layout.timeRowMm) + 3.4;
+    if (layout.qrBlockYMm < timeBottom + 1.1) {
+      throw new Error(`QR overlaps Date/Time: qrY=${layout.qrBlockYMm.toFixed(2)} timeBottom=${timeBottom.toFixed(2)}`);
+    }
   }
 
   const worst = computeProductionLabelLayout({
