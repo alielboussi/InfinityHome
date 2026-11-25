@@ -438,6 +438,14 @@ export async function finishUpholsteryProductionJob(sb, {
   let labelJobId = null;
   let labelPrintWarning = null;
   try {
+    if (linkedQuoteId) {
+      const { printQuoteOrderLabelsForQuote } = await import('./quoteProductionRouting.js');
+      labelJobId = await printQuoteOrderLabelsForQuote(sb, {
+        quoteId: linkedQuoteId,
+        printedBy: labelPrintedBy,
+        qtyFallback: qty,
+      });
+    } else {
     labelJobId = await enqueueWarehouseProductionLabelJob(sb, {
       name: output.name,
       sku: labelSku,
@@ -450,6 +458,7 @@ export async function finishUpholsteryProductionJob(sb, {
       customerPhone: job.metadata?.customer_phone,
       quoteNumber: job.metadata?.quote_number,
     });
+    }
     if (!labelJobId) {
       labelPrintWarning = 'Stock updated but labels were not sent to the printer (Zebra Weblink is not configured on the server).';
     }
@@ -526,6 +535,23 @@ export async function finishUpholsteryProductionJob(sb, {
       quoteId: linkedQuoteId || null,
     });
     deliveryQueued = true;
+  }
+
+  try {
+    const { queueUpholsteryProductionWhatsApp } = await import('./upholsteryProductionWhatsAppNotify.js');
+    queueUpholsteryProductionWhatsApp({
+      kind: 'orderComplete',
+      orderSource: 'manufacture',
+      producedBy: labelPrintedBy,
+      status: 'Completed',
+      products: [{
+        name: String(output.name || job.finished_name || job.raw_name || 'Product').trim(),
+        qty,
+        remainingQty: 0,
+      }],
+    });
+  } catch (waErr) {
+    console.warn('[upholstery-job-finish] WhatsApp notify failed:', waErr?.message || waErr);
   }
 
   return {

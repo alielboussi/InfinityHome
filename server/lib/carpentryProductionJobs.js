@@ -314,6 +314,7 @@ export async function resumeCarpentryProductionJob(sb, { jobId, userId }) {
 export async function finishCarpentryProductionJob(sb, {
   jobId,
   userId = null,
+  producedBy = '',
   preferredStoreroomLocationId = null,
   destination = 'delivery',
 }) {
@@ -349,6 +350,7 @@ export async function finishCarpentryProductionJob(sb, {
       assemblyId: productId,
       productQty: qty,
       userId,
+      producedBy,
       carpentryJobId: job.id,
       preferredStoreroomLocationId,
     });
@@ -432,6 +434,19 @@ export async function finishCarpentryProductionJob(sb, {
     },
   });
 
+  if (dest === 'floor1' && linkedQuoteId && !meta.catalog_manufacture) {
+    try {
+      const { printQuoteOrderLabelsForQuote } = await import('./quoteProductionRouting.js');
+      await printQuoteOrderLabelsForQuote(sb, {
+        quoteId: linkedQuoteId,
+        printedBy: producedBy || 'Carpentry workshop',
+        qtyFallback: qty,
+      });
+    } catch (labelErr) {
+      console.warn('[carpentryProductionJobs] order label print failed:', labelErr?.message || labelErr);
+    }
+  }
+
   if (productId && dest === 'delivery') {
     const { data: asm } = await sb.from('warehouse_assemblies').select('name').eq('id', productId).maybeSingle();
     const { registerProductionJobAwaitingDriver } = await import('./warehouseDeliveryAdminQueue.js');
@@ -445,6 +460,28 @@ export async function finishCarpentryProductionJob(sb, {
       quoteId: linkedQuoteId || null,
     });
     deliveryQueued = true;
+  }
+
+  if (!meta.catalog_manufacture) {
+    try {
+      const { queueCarpentryProductionWhatsApp, resolveCarpentryWhatsAppAlias } = await import(
+        './carpentryProductionWhatsAppNotify.js'
+      );
+      const alias = producedBy || await resolveCarpentryWhatsAppAlias(null, userId);
+      queueCarpentryProductionWhatsApp({
+        kind: 'orderComplete',
+        orderSource: 'manufacture',
+        producedBy: alias,
+        status: 'Completed',
+        products: [{
+          name: String(job.product_name || 'Product').trim(),
+          qty,
+          remainingQty: 0,
+        }],
+      });
+    } catch (waErr) {
+      console.warn('[carpentry-job-finish] WhatsApp notify failed:', waErr?.message || waErr);
+    }
   }
 
   return {

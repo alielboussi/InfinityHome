@@ -1,4 +1,4 @@
-import { pickQuoteItemProductionFields } from './quoteProductionItemFields.js';
+import { pickQuoteItemProductionFields, quoteLineOrderDisplayName } from './quoteProductionItemFields.js';
 
 /** Qty for line math: blank defaults to 1; explicit 0 stays 0 unless price is set (legacy saves). */
 export function resolveQuoteLineQuantity(quantity, unitPrice = 0) {
@@ -25,7 +25,7 @@ export function normalizeQuotationItemRow(row) {
   });
   return {
     ...row,
-    name: row.name_override || row.name || row.product_name || '',
+    name: quoteLineOrderDisplayName(row),
     description: row.description || '',
     quantity,
     unit_price,

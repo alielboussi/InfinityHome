@@ -46,6 +46,7 @@ export async function markQuoteLinePartialReady(sb, {
   itemId,
   readyQty,
   userId = null,
+  producedBy = '',
   productionLineSet = null,
 } = {}) {
   const qid = String(quoteId || '').trim();
@@ -101,6 +102,44 @@ export async function markQuoteLinePartialReady(sb, {
   if (upErr) throw new Error(upErr.message || 'Failed to save line progress');
 
   const lines = items.map((it) => buildProductionLineSummaryRow(it, progressPatch));
+  if (normalizedRoute === 'upholstery' || normalizedRoute === 'carpentry') {
+    try {
+      const summary = lines.find((ln) => String(ln.id) === String(itemId)) || {};
+      const remaining = lineRemainingQty(summary, progressPatch);
+      const orderDone = allQuoteLinesFullyCompleted(lines, progressPatch);
+      const payload = {
+        kind: 'orderComplete',
+        producedBy,
+        customerName: progressPatch.customer_name,
+        customerPhone: progressPatch.customer_phone,
+        status: orderDone ? 'Completed' : 'Partial',
+        products: [{
+          name: String(summary.name || 'Product').trim(),
+          qty: add,
+          remainingQty: remaining,
+        }],
+      };
+      if (normalizedRoute === 'upholstery') {
+        const { queueUpholsteryProductionWhatsApp, hassanOrderSourceFromMeta } = await import(
+          './upholsteryProductionWhatsAppNotify.js'
+        );
+        queueUpholsteryProductionWhatsApp({
+          ...payload,
+          orderSource: hassanOrderSourceFromMeta(progressPatch),
+        });
+      } else {
+        const { queueCarpentryProductionWhatsApp, hassanOrderSourceFromMeta } = await import(
+          './carpentryProductionWhatsAppNotify.js'
+        );
+        queueCarpentryProductionWhatsApp({
+          ...payload,
+          orderSource: hassanOrderSourceFromMeta(progressPatch),
+        });
+      }
+    } catch (waErr) {
+      console.warn('[quote-line-ready] WhatsApp notify failed:', waErr?.message || waErr);
+    }
+  }
   return {
     quote_id: qid,
     item_id: String(itemId),
@@ -205,7 +244,8 @@ export async function handoffQuoteLinePartialToFloor1(sb, {
     const { printQuoteOrderLineLabels } = await import('./quoteProductionRouting.js');
     await printQuoteOrderLineLabels(sb, {
       lines: [{
-        name: String(summary?.name || raw?.name || meta.quote_number || '').trim(),
+        ...raw,
+        name: String(summary?.name || '').trim(),
         quantity: sliceQty,
       }],
       quoteNumber: meta.quote_number,

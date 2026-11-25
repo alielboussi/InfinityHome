@@ -49,6 +49,8 @@ export async function pushFloor2ToProductionJob(sb, {
   productQty = 1,
   channel,
   userId = null,
+  producedBy = '',
+  user = null,
 }) {
   const route = normalizeChannel(channel);
   if (!route) throw new Error('channel must be upholstery or carpentry');
@@ -77,6 +79,24 @@ export async function pushFloor2ToProductionJob(sb, {
 
   await adjustAssemblyInventory(sb, aid, floor2Id, -qty);
   await recomputeWarehouseLocationStockServer(sb, floor2Id);
+  const remainingAfter = await loadAssemblyInventoryQty(sb, aid, floor2Id);
+  try {
+    const { queueUpholsteryProductionWhatsApp, resolveUpholsteryWhatsAppAlias } = await import(
+      './upholsteryProductionWhatsAppNotify.js'
+    );
+    const alias = producedBy || await resolveUpholsteryWhatsAppAlias(user, userId);
+    queueUpholsteryProductionWhatsApp({
+      kind: 'floor2Debit',
+      producedBy: alias,
+      products: [{
+        name: String(assembly.name || aid).trim(),
+        qty,
+        remainingQty: remainingAfter,
+      }],
+    });
+  } catch (waErr) {
+    console.warn('[floor2-push] WhatsApp notify failed:', waErr?.message || waErr);
+  }
 
   const now = new Date().toISOString();
   const jobId = newUuid();

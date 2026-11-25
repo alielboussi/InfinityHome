@@ -1,5 +1,6 @@
 import db from '../dataClient';
 import { apiUrl, getApiBase, isLocalDev, withApiHeaders } from '../utils/apiUrl';
+import { compressQuoteLineImageFile } from '../utils/compressQuoteLineImage';
 import { phraseStillHasEnglishWords, translateTermToArabic } from '../utils/quoteArabicTranslate';
 
 const QUOTE_PRODUCTION_API = '/api/quote-production';
@@ -85,6 +86,9 @@ async function quoteProductionFetch(url, init = {}, {
 async function readJsonOrThrow(resp, fallbackError) {
   const payload = await resp.json().catch(() => ({}));
   if (!resp.ok || payload?.ok === false) {
+    if (resp.status === 413) {
+      throw new Error('Image is too large for upload. Try a smaller photo.');
+    }
     throw new Error(payload?.error || fallbackError || `Request failed (${resp.status})`);
   }
   return payload;
@@ -129,7 +133,8 @@ function readFileAsDataUrl(file) {
 
 /** Hassan quote line reference — server upload (Firebase Admin), not client storage rules. */
 export async function uploadQuoteLineReferenceImageViaApi(quoteId, itemId, file) {
-  const image_base64 = await readFileAsDataUrl(file);
+  const compressed = await compressQuoteLineImageFile(file);
+  const image_base64 = await readFileAsDataUrl(compressed);
   const resp = await quoteProductionFetch(QUOTE_PRODUCTION_API, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

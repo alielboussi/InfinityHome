@@ -71,7 +71,8 @@ export async function deductFloor2ForQuoteLineReady(sb, rawItem, requestedQty) {
   }
   await adjustAssemblyInventory(sb, aid, FLOOR2_LOC, -take);
   await recomputeWarehouseLocationStockServer(sb, FLOOR2_LOC);
-  return { deducted: take, ready_qty: take, assembly_id: aid };
+  const remaining = await loadAssemblyInventoryQty(sb, aid, FLOOR2_LOC);
+  return { deducted: take, ready_qty: take, assembly_id: aid, remaining };
 }
 
 export async function floor2AvailableForQuoteLine(sb, rawItem) {

@@ -87,10 +87,10 @@ async function makeCode128Png(sku) {
   const raw = await bwipjs.toBuffer({
     bcid: 'code128',
     text: String(sku || '').toUpperCase(),
-    scale: 3,
-    height: 12,
+    scale: 5,
+    height: 14,
     includetext: false,
-    paddingwidth: 0,
+    paddingwidth: 8,
     paddingheight: 0,
   });
   return sharp(raw)
@@ -103,9 +103,10 @@ async function makeQrPng(text, sizePx) {
   const qr = await bwipjs.toBuffer({
     bcid: 'qrcode',
     text: String(text || '').trim(),
-    scale: 4,
-    paddingwidth: 0,
-    paddingheight: 0,
+    eclevel: 'M',
+    scale: 6,
+    paddingwidth: 2,
+    paddingheight: 2,
   });
   return sharp(qr)
     .resize(sizePx, sizePx, { fit: 'contain', background: { r: 255, g: 255, b: 255, alpha: 1 } })

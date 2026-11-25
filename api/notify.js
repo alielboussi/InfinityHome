@@ -3729,6 +3729,47 @@ async function deliverProductionAlert(targets, message, imageUrl, mode, provider
 }
 
 async function handleWhatsAppProduction(body) {
+  const kind = String(body.kind || body.template || '').trim();
+  const whatsappKindRaw = String(body.whatsappKind || body.whatsapp_kind || '').trim();
+  const presetGroup = String(body.presetGroup || body.preset_group || '').trim().toLowerCase();
+  const carpentryFlow = kind.startsWith('carpentry')
+    || whatsappKindRaw === 'productionCarpentry'
+    || presetGroup === 'carpentry';
+  const workshopFlow = kind === 'upholsteryFloor2Debit'
+    || kind === 'upholsteryOrderComplete'
+    || kind === 'carpentryFloor2Debit'
+    || kind === 'carpentryOrderComplete'
+    || kind === 'carpentrySentToPainting'
+    || kind === 'carpentryFloor2Credit'
+    || kind === 'floor2Debit'
+    || kind === 'floor2Credit'
+    || kind === 'orderComplete'
+    || kind === 'sentToPainting';
+
+  let message = String(body.message || '').trim();
+  if (workshopFlow && !message) {
+    const { buildWorkshopProductionWhatsAppText } = await import(
+      '../server/lib/workshopProductionWhatsAppMessage.js'
+    );
+    const mappedKind = kind === 'upholsteryOrderComplete' || kind === 'carpentryOrderComplete' || kind === 'orderComplete'
+      ? 'orderComplete'
+      : (kind === 'carpentrySentToPainting' || kind === 'sentToPainting'
+        ? 'sentToPainting'
+        : (kind === 'carpentryFloor2Credit' || kind === 'floor2Credit'
+          ? 'floor2Credit'
+          : 'floor2Debit'));
+    message = buildWorkshopProductionWhatsAppText({
+      kind: mappedKind,
+      orderSource: body.orderSource || body.order_source,
+      producedBy: body.producedBy || body.produced_by || body.accountAlias,
+      customerName: body.customerName || body.customer_name,
+      customerPhone: body.customerPhone || body.customer_phone,
+      products: Array.isArray(body.products) ? body.products : [],
+      status: body.status,
+      printedAt: body.printedAt || body.printed_at || new Date(),
+    });
+  }
+  if (!message) {
   const {
     buildWarehouseProductionWhatsAppText,
   } = await import('../server/lib/warehouseProductionWhatsAppMessage.js');
@@ -3736,7 +3777,7 @@ async function handleWhatsAppProduction(body) {
   const variant = String(body.variant || body.event || 'new').toLowerCase() === 'existing'
     ? 'existing'
     : 'new';
-  const message = buildWarehouseProductionWhatsAppText({
+  message = buildWarehouseProductionWhatsAppText({
     variant,
     producedBy: body.producedBy || body.produced_by || body.accountAlias || body.account_alias,
     sku: body.sku,
@@ -3746,11 +3787,10 @@ async function handleWhatsAppProduction(body) {
     qtyOnHand: body.qtyOnHand ?? body.qty_on_hand ?? body.qty_after,
     printedAt: body.printedAt || body.printed_at || new Date(),
   });
+  }
 
-  const presetGroup = String(body.presetGroup || body.preset_group || '').trim().toLowerCase();
-  const whatsappKindRaw = String(body.whatsappKind || body.whatsapp_kind || '').trim();
   let routingKind = 'production';
-  if (whatsappKindRaw === 'productionCarpentry' || presetGroup === 'carpentry') {
+  if (carpentryFlow) {
     routingKind = 'productionCarpentry';
   }
   let routing = resolveDeliveryTargets(routingKind, null);

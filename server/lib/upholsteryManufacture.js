@@ -393,6 +393,8 @@ export async function executeUpholsteryManufacture(sb, {
   rawAssemblyId,
   productQty = 1,
   userId = null,
+  producedBy = '',
+  user = null,
 }) {
   const ctx = await loadUpholsteryManufactureContext(sb, rawAssemblyId);
   const qty = Math.max(1, Math.floor(Number(productQty) || 1));
@@ -404,6 +406,8 @@ export async function executeUpholsteryManufacture(sb, {
     productQty: qty,
     channel: 'upholstery',
     userId,
+    producedBy,
+    user,
   });
 
   return {

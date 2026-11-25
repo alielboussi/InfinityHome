@@ -567,6 +567,22 @@ export function formatQuoteItemAccessoriesPdfLine(it) {
   return `Included Accessories : ${fields.accessories.join(', ')}`;
 }
 
+/** Order-facing product name: Hassan/quote text first, catalog `name` last. */
+export function quoteLineOrderDisplayName(line, quoteProduct = null) {
+  const override = String(line?.name_override || '').trim();
+  if (override) return override;
+  const fromQuoteProduct = String(
+    quoteProduct?.name
+    || line?.quote_product_name
+    || line?.product_name
+    || '',
+  ).trim();
+  if (fromQuoteProduct) return fromQuoteProduct;
+  const display = String(line?.display_name || '').trim();
+  if (display) return display;
+  return String(line?.name || '').trim();
+}
+
 /** Line row stored on quote_production_routing.metadata.lines and returned to workshop apps. */
 export function quoteItemLineImageUrl(it) {
   const meta = it?.metadata && typeof it.metadata === 'object' ? it.metadata : {};
@@ -581,7 +597,7 @@ export function quoteItemLineImageUrl(it) {
 export function buildProductionLineSummaryRow(it, routingMeta = null) {
   const base = {
     id: it.id,
-    name: it.name_override || it.name || '',
+    name: quoteLineOrderDisplayName(it),
     description: trimOrNull(it.description),
     quantity: Number(it.quantity) || 0,
     unit_price: Number(it.unit_price) || 0,

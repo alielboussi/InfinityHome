@@ -478,6 +478,32 @@ export async function sendAssemblyToPaintingDepartment(sb, {
     console.warn('[sendAssemblyToPaintingDepartment] push notify failed:', pushErr?.message || pushErr);
   }
 
+  try {
+    const { queueCarpentryProductionWhatsApp } = await import('./carpentryProductionWhatsAppNotify.js');
+    const remainingAfter = await loadAssemblyInventoryQty(sb, ctx.productId, floor2LocationId);
+    queueCarpentryProductionWhatsApp({
+      kind: 'floor2Debit',
+      producedBy: sentByName,
+      products: [{
+        name: String(ctx.assembly.name || 'Product').trim(),
+        qty,
+        remainingQty: remainingAfter,
+      }],
+    });
+    queueCarpentryProductionWhatsApp({
+      kind: 'sentToPainting',
+      orderSource: 'manufacture',
+      producedBy: sentByName,
+      products: [{
+        name: String(ctx.assembly.name || 'Product').trim(),
+        qty,
+        remainingQty: remainingAfter,
+      }],
+    });
+  } catch (waErr) {
+    console.warn('[sendAssemblyToPaintingDepartment] WhatsApp notify failed:', waErr?.message || waErr);
+  }
+
   return { job: await serializePaintingJobForClient(sb, inserted) };
 }
 
@@ -588,6 +614,27 @@ export async function sendCarpentryQuoteToPaintingDepartment(sb, {
     .catch((pushErr) => {
       console.warn('[sendCarpentryQuoteToPaintingDepartment] push notify failed:', pushErr?.message || pushErr);
     });
+
+  try {
+    const { queueCarpentryProductionWhatsApp, hassanOrderSourceFromMeta } = await import(
+      './carpentryProductionWhatsAppNotify.js'
+    );
+    const orderSource = hassanOrderSourceFromMeta(quoteCustomerMeta(quoteDisplay));
+    queueCarpentryProductionWhatsApp({
+      kind: 'sentToPainting',
+      orderSource,
+      producedBy: sentByName,
+      customerName: quoteDisplay?.customer_name,
+      customerPhone: quoteDisplay?.customer_phone,
+      products: [{
+        name: String(row.product_name || 'Product').trim(),
+        qty,
+        remainingQty: 0,
+      }],
+    });
+  } catch (waErr) {
+    console.warn('[sendCarpentryQuoteToPaintingDepartment] WhatsApp notify failed:', waErr?.message || waErr);
+  }
 
   if (skipClientEnrichment) {
     return { job: serializeJob(inserted) };
@@ -711,6 +758,30 @@ export async function sendPartialCarpentryQuoteLineToPainting(sb, {
     await notifyPaintingNewJob(serializeJob(inserted));
   } catch (pushErr) {
     console.warn('[sendPartialCarpentryQuoteLineToPainting] push notify failed:', pushErr?.message || pushErr);
+  }
+
+  try {
+    const { queueCarpentryProductionWhatsApp, hassanOrderSourceFromMeta } = await import(
+      './carpentryProductionWhatsAppNotify.js'
+    );
+    const orderSource = hassanOrderSourceFromMeta(quoteCustomerMeta(quoteDisplay));
+    const ordered = Math.max(0, Number(progress.ordered_qty) || 0);
+    const done = Math.max(0, Number(progress.completed_qty) || 0);
+    const remainingOrder = Math.max(0, ordered - done);
+    queueCarpentryProductionWhatsApp({
+      kind: 'sentToPainting',
+      orderSource,
+      producedBy: sentByName,
+      customerName: quoteDisplay?.customer_name,
+      customerPhone: quoteDisplay?.customer_phone,
+      products: [{
+        name: String(row.product_name || 'Product').trim(),
+        qty,
+        remainingQty: remainingOrder,
+      }],
+    });
+  } catch (waErr) {
+    console.warn('[sendPartialCarpentryQuoteLineToPainting] WhatsApp notify failed:', waErr?.message || waErr);
   }
 
   return { job: await serializePaintingJobForClient(sb, inserted) };
@@ -913,14 +984,32 @@ export async function finishPaintingProductionJob(sb, {
 
   let labelJobId = null;
   let labelPrintWarning = null;
-  const labelName = String(assemblyRow?.name || job.product_name || productId).trim();
+  const quoteId = String(job.metadata?.carpentry_quote_id || job.metadata?.quote_id || '').trim();
+  const catalogManufacture = job.metadata?.catalog_manufacture === true;
+  const labelName = String(job.product_name || assemblyRow?.name || productId).trim();
   const rawSku = String(assemblyRow?.family_sku || job.product_sku || '').trim();
-  if (labelName && rawSku) {
+  const operator = String(printedBy || '').trim() || 'Painting workshop';
+  if (quoteId && !catalogManufacture) {
+    try {
+      const { printQuoteOrderLabelsForQuote } = await import('./quoteProductionRouting.js');
+      labelJobId = await printQuoteOrderLabelsForQuote(sb, {
+        quoteId,
+        printedBy: operator,
+        qtyFallback: qty,
+      });
+      if (!labelJobId) {
+        labelPrintWarning = 'Job completed but labels were not sent to the printer (Zebra Weblink is not configured on the server).';
+      }
+    } catch (printErr) {
+      const { formatZebraPrintError } = await import('./formatZebraPrintError.js');
+      labelPrintWarning = formatZebraPrintError(printErr);
+      console.warn('[paintingProductionJobs] order label print failed:', printErr?.message || printErr);
+    }
+  } else if (labelName && rawSku) {
     const { normalizeWarehousePacketScan } = await import('../../src/utils/warehouseScanResolver.js');
     const { enqueueWarehouseProductionLabelJob } = await import('./productionLabelPrint.js');
     const { LABEL_PHOTO_FLOOR2 } = await import('./warehouseLabelPhotoFloor.js');
     const labelSku = normalizeWarehousePacketScan(rawSku) || rawSku;
-    const operator = String(printedBy || '').trim() || 'Painting workshop';
     try {
       labelJobId = await enqueueWarehouseProductionLabelJob(sb, {
         name: labelName,
@@ -945,6 +1034,29 @@ export async function finishPaintingProductionJob(sb, {
       labelPrintWarning = formatZebraPrintError(printErr);
       console.warn('[paintingProductionJobs] label print failed:', printErr?.message || printErr);
     }
+  }
+
+  try {
+    const { queueCarpentryProductionWhatsApp, hassanOrderSourceFromMeta } = await import(
+      './carpentryProductionWhatsAppNotify.js'
+    );
+    const meta = job.metadata && typeof job.metadata === 'object' ? job.metadata : {};
+    queueCarpentryProductionWhatsApp({
+      kind: 'orderComplete',
+      orderSource: hassanOrderSourceFromMeta(meta),
+      producedBy: String(printedBy || '').trim() || 'Painting workshop',
+      customerName: meta.customer_name,
+      customerPhone: meta.customer_phone,
+      status: 'Completed',
+      destination: dest,
+      products: [{
+        name: String(labelName || job.product_name || 'Product').trim(),
+        qty,
+        remainingQty: 0,
+      }],
+    });
+  } catch (waErr) {
+    console.warn('[finishPaintingProductionJob] WhatsApp notify failed:', waErr?.message || waErr);
   }
 
   return {

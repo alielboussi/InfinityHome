@@ -2241,22 +2241,30 @@ export function QuotationCreateView({ quoteId, onBackHome, onSaved, hassanOrderC
                               if (locked || !(showCarpentryMeta || showUpholsteryMeta)) return;
                               const clip = e.clipboardData;
                               if (!clip) return;
-                              for (const part of clip.items || []) {
-                                if (!part.type?.startsWith('image/')) continue;
-                                e.preventDefault();
-                                const file = part.getAsFile();
-                                if (!file) return;
-                                try {
-                                  const url = await uploadQuoteLineReferenceImageViaApi(
-                                    currentQuoteId || 'draft',
-                                    it.id,
-                                    file,
-                                  );
-                                  updateItem(it.id, { line_image_url: url });
-                                } catch (err) {
-                                  alert(err?.message || 'Paste image failed');
+                              const files = [];
+                              const itemList = clip.items ? Array.from(clip.items) : [];
+                              for (const part of itemList) {
+                                if (part.type?.startsWith('image/')) {
+                                  const f = part.getAsFile();
+                                  if (f) files.push(f);
                                 }
-                                return;
+                              }
+                              const fileList = clip.files ? Array.from(clip.files) : [];
+                              for (const f of fileList) {
+                                if (f?.type?.startsWith('image/')) files.push(f);
+                              }
+                              const file = files[0];
+                              if (!file) return;
+                              e.preventDefault();
+                              try {
+                                const url = await uploadQuoteLineReferenceImageViaApi(
+                                  currentQuoteId || 'draft',
+                                  it.id,
+                                  file,
+                                );
+                                updateItem(it.id, { line_image_url: url });
+                              } catch (err) {
+                                alert(err?.message || 'Line image upload failed');
                               }
                             }}
                           />

@@ -11,7 +11,10 @@ import {
   resolvePacketFromScan,
 } from '../../src/utils/warehouseScanResolver.js';
 import { productionScanResolveCandidates } from '../../src/utils/productionLabelQrScan.js';
-import { buildProductionLineSummaryRow } from '../../src/utils/quoteProductionItemFields.js';
+import {
+  buildProductionLineSummaryRow,
+  quoteLineOrderDisplayName,
+} from '../../src/utils/quoteProductionItemFields.js';
 import {
   QUOTE_LINE_SET_CATALOG,
   QUOTE_LINE_SET_FLOOR2,
@@ -42,6 +45,24 @@ export function normalizeQuoteFinishDestination(raw) {
   return 'delivery';
 }
 
+async function attachQuoteProductNames(sb, lines = []) {
+  const ids = [...new Set(
+    (lines || []).map((line) => String(line?.quote_product_id || '').trim()).filter(Boolean),
+  )];
+  if (!ids.length) {
+    return (lines || []).map((line) => ({
+      ...line,
+      name: quoteLineOrderDisplayName(line),
+    }));
+  }
+  const { data } = await sb.from('quotation_products').select('id, name').in('id', ids);
+  const byId = new Map((data || []).map((row) => [String(row.id), row]));
+  return (lines || []).map((line) => ({
+    ...line,
+    name: quoteLineOrderDisplayName(line, byId.get(String(line?.quote_product_id || ''))),
+  }));
+}
+
 export async function printQuoteOrderLineLabels(sb, {
   lines,
   quoteNumber,
@@ -52,13 +73,14 @@ export async function printQuoteOrderLineLabels(sb, {
 }) {
   const { enqueueWarehouseProductionLabelJob } = await import('./productionLabelPrint.js');
   const quoteNo = String(quoteNumber || '').trim();
-  const named = (lines || []).filter((line) => String(line?.name || '').trim());
+  const enriched = await attachQuoteProductNames(sb, lines);
+  const named = enriched.filter((line) => String(line?.name || '').trim());
   const jobs = named.length
     ? named.map((line) => ({
       name: String(line.name).trim(),
-      qty: Math.max(1, Math.floor(Number(line.quantity) || qtyFallback || 1)),
+      qty: Math.max(1, Math.floor(Number(line.quantity ?? line.qty) || qtyFallback || 1)),
     }))
-    : (quoteNo ? [{ name: quoteNo, qty: Math.max(1, Math.floor(Number(qtyFallback) || 1)) }] : []);
+    : [];
   let lastId = null;
   for (const job of jobs) {
     lastId = await enqueueWarehouseProductionLabelJob(sb, {
@@ -74,6 +96,26 @@ export async function printQuoteOrderLineLabels(sb, {
     });
   }
   return lastId;
+}
+
+export async function printQuoteOrderLabelsForQuote(sb, {
+  quoteId,
+  printedBy = 'Floor 1 stock',
+  qtyFallback = 1,
+} = {}) {
+  const qid = String(quoteId || '').trim();
+  if (!qid) return null;
+  const { quote, items, routing } = await loadQuoteBundle(sb, qid);
+  const meta = routing?.metadata && typeof routing.metadata === 'object' ? routing.metadata : {};
+  const lines = (items || []).map((it) => buildProductionLineSummaryRow(it, meta));
+  return printQuoteOrderLineLabels(sb, {
+    lines,
+    quoteNumber: quote?.quote_number || meta.quote_number,
+    customerName: meta.customer_name,
+    customerPhone: meta.customer_phone,
+    qtyFallback,
+    printedBy,
+  });
 }
 
 async function loadAssemblyInventoryQty(sb, assemblyId, locationId) {
@@ -713,6 +755,7 @@ export async function creditQuoteAssemblyUnitsToFloor1(sb, { assemblyId, qty } =
 export async function completeQuoteProductionOrder(sb, {
   quoteId,
   userId,
+  producedBy = '',
   deferDeliveryQueue = false,
   destination = 'delivery',
   productionLineSet = null,
@@ -825,6 +868,52 @@ export async function completeQuoteProductionOrder(sb, {
       });
     } catch (labelErr) {
       console.warn('[completeQuoteProductionOrder] label print failed:', labelErr?.message || labelErr);
+    }
+  }
+
+  const routeName = String(routingRow?.route || run.metadata?.route || '').toLowerCase();
+  const progressMap = routeMeta.line_progress && typeof routeMeta.line_progress === 'object'
+    ? routeMeta.line_progress
+    : {};
+  const hadLineSlices = Object.values(progressMap).some((entry) => Array.isArray(entry?.slices) && entry.slices.length);
+  if ((routeName === 'upholstery' || routeName === 'carpentry') && !hadLineSlices) {
+    try {
+      const alias = producedBy || (await (async () => {
+        const { resolveUpholsteryWhatsAppAlias } = await import('./upholsteryProductionWhatsAppNotify.js');
+        return resolveUpholsteryWhatsAppAlias(null, userId);
+      })());
+      const products = (summaryLines || []).map((ln) => ({
+        name: String(ln.name || 'Product').trim(),
+        qty: Math.max(1, Math.floor(Number(ln.quantity) || finishQty)),
+        remainingQty: 0,
+      }));
+      const payload = {
+        kind: 'orderComplete',
+        producedBy: alias,
+        customerName: routeMeta.customer_name,
+        customerPhone: routeMeta.customer_phone,
+        status: 'Completed',
+        products: products.length ? products : [{ name: routeMeta.quote_number || 'Order', qty: finishQty, remainingQty: 0 }],
+      };
+      if (routeName === 'carpentry') {
+        const { queueCarpentryProductionWhatsApp, hassanOrderSourceFromMeta } = await import(
+          './carpentryProductionWhatsAppNotify.js'
+        );
+        queueCarpentryProductionWhatsApp({
+          ...payload,
+          orderSource: hassanOrderSourceFromMeta(routeMeta),
+        });
+      } else {
+        const { queueUpholsteryProductionWhatsApp, hassanOrderSourceFromMeta } = await import(
+          './upholsteryProductionWhatsAppNotify.js'
+        );
+        queueUpholsteryProductionWhatsApp({
+          ...payload,
+          orderSource: hassanOrderSourceFromMeta(routeMeta),
+        });
+      }
+    } catch (waErr) {
+      console.warn('[completeQuoteProductionOrder] WhatsApp notify failed:', waErr?.message || waErr);
     }
   }
 

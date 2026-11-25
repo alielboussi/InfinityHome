@@ -1,5 +1,6 @@
-/** Zebra ZPL — return customer pickup label (80×68 mm, no QR). */
+/** Zebra ZPL — return customer pickup label (80×68 mm). Code 128 + product-image QR. */
 
+import { buildProductPhotoQrUrl } from './productPhotoBySku.js';
 import {
   COMPANY_NAME,
   BARCODE_HEIGHT_MM,
@@ -9,16 +10,20 @@ import {
   COMPANY_TEXT_HEIGHT_MM,
   GAP_AFTER_BARCODE_MM,
   GAP_AFTER_COMPANY_MM,
+  HEADER_CLEARANCE_MM,
   LABEL_GAP_MM,
   LABEL_HEIGHT_MM,
   LABEL_MARGIN_MM,
   LABEL_WIDTH_MM,
   NAME_LINE_HEIGHT_MM,
-  NAME_VALUE_MAX_LINES,
+  QR_SIZE_MM,
   ROW_TEXT_MM,
   computeProductionLabelLayout,
   labelPitchMm,
   mmToDots,
+  zebraCode128ModuleDots,
+  zebraQrMagnification,
+  zebraQrPrintedMm,
 } from './warehouseProductionLabelLayout.js';
 import {
   formatProductionLabelBlockDate,
@@ -42,10 +47,18 @@ function zplEscape(value) {
     .replace(/~/g, ' ');
 }
 
-function computeReturnCustomerLabelDots({ dpi = 203 } = {}) {
+function qrEscape(data) {
+  return String(data || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/,/g, '\\,')
+    .replace(/\^/g, '\\^');
+}
+
+function computeReturnCustomerLabelDots({ dpi = 203, qrDataLength = 110 } = {}) {
   const base = computeProductionLabelLayout({ dpi });
   const toDots = (mm) => mmToDots(mm, dpi);
   const textTopDots = (rowStartMm, padMm = 0.35) => toDots(rowStartMm + padMm);
+  const rowGap = Math.max(BLOCK_GAP_MM, HEADER_CLEARANCE_MM);
 
   const marginMm = LABEL_MARGIN_MM;
   const companyTextTopMm = marginMm + BORDER_TOP_INSET_MM;
@@ -53,20 +66,25 @@ function computeReturnCustomerLabelDots({ dpi = 203 } = {}) {
   let y = barcodeTopMm + BARCODE_HEIGHT_MM + GAP_AFTER_BARCODE_MM;
 
   const skuRowMm = y;
-  y += ROW_TEXT_MM + BLOCK_GAP_MM;
+  y += ROW_TEXT_MM + rowGap;
 
   const nameBlockTopMm = y;
-  const nameBlockHeightMm = NAME_LINE_HEIGHT_MM * NAME_VALUE_MAX_LINES;
-  y = nameBlockTopMm + nameBlockHeightMm + BLOCK_GAP_MM;
+  const nameBlockHeightMm = NAME_LINE_HEIGHT_MM;
+  y = nameBlockTopMm + nameBlockHeightMm + rowGap;
+
+  const qrPrintedMm = zebraQrPrintedMm(QR_SIZE_MM, qrDataLength, dpi);
+  const qrBlockYMm = y;
+  const imageQrLeftMm = LABEL_WIDTH_MM / 2 - qrPrintedMm / 2;
+  y += qrPrintedMm + rowGap;
 
   const customerNameRowMm = y;
-  y += ROW_TEXT_MM + BLOCK_GAP_MM;
+  y += ROW_TEXT_MM + rowGap;
 
   const customerPhoneRowMm = y;
-  y += ROW_TEXT_MM + BLOCK_GAP_MM;
+  y += ROW_TEXT_MM + rowGap;
 
   const dateRowMm = y;
-  y += ROW_TEXT_MM + BLOCK_GAP_MM;
+  y += ROW_TEXT_MM + rowGap;
 
   const timeRowMm = y;
 
@@ -79,6 +97,9 @@ function computeReturnCustomerLabelDots({ dpi = 203 } = {}) {
     valueBoxW,
     skuRowY: textTopDots(skuRowMm),
     nameBlockTop: textTopDots(nameBlockTopMm),
+    qrBlockY: toDots(qrBlockYMm),
+    imageQrX: toDots(imageQrLeftMm),
+    qrSize: toDots(QR_SIZE_MM),
     customerNameRowY: textTopDots(customerNameRowMm),
     customerPhoneRowY: textTopDots(customerPhoneRowMm),
     dateRowY: textTopDots(dateRowMm),
@@ -100,8 +121,11 @@ export function buildWarehouseReturnCustomerLabelZpl(opts = {}) {
     throw new Error('Invalid printedAt');
   }
 
+  const photoQrUrl = String(opts.imageQrUrl || '').trim()
+    || buildProductPhotoQrUrl(String(opts.sku || '').trim());
+  const imageQr = qrEscape(photoQrUrl);
   const widthDots = mmToDots(widthMm, dpi);
-  const d = computeReturnCustomerLabelDots({ dpi });
+  const d = computeReturnCustomerLabelDots({ dpi, qrDataLength: imageQr.length || 110 });
   const mainX = d.margin;
   const mainW = d.mainWidth;
   const hf = d.headerFont;
@@ -112,7 +136,6 @@ export function buildWarehouseReturnCustomerLabelZpl(opts = {}) {
   const nameText = zplEscape(opts.name);
   const customerName = zplEscape(opts.customerName);
   const customerPhone = zplEscape(opts.customerPhone);
-  const qrUrl = String(opts.returnNotePdfUrl || '').trim();
   const dateText = zplEscape(formatProductionLabelBlockDate(printedAt));
   const timeText = zplEscape(formatProductionLabelBlockTime(printedAt));
   const companyLine = zplEscape(COMPANY_NAME);
@@ -125,11 +148,8 @@ export function buildWarehouseReturnCustomerLabelZpl(opts = {}) {
   );
 
   const barcodeH = d.barcodeHeight;
-  const barcodeModule = Math.max(2, Math.min(3, Math.floor(d.barcodeWidth / (skuText.length * 11 + 35))));
-
-  const barcodeOrQrBlock = qrUrl
-    ? `^FO${d.barcodeLeft},${d.barcodeTop}^BQN,2,6^FDQA,${zplEscape(qrUrl)}^FS`
-    : `^FO${d.barcodeLeft},${d.barcodeTop}^BY${barcodeModule},3,${Math.max(5, Math.floor(barcodeH / 10))}^BCN,${barcodeH},N,N,N^FD${skuText}^FS`;
+  const barcodeModule = zebraCode128ModuleDots(skuText, d.barcodeWidth);
+  const imageMag = zebraQrMagnification(d.qrSize, imageQr.length);
 
   const lines = [
     '^XA',
@@ -139,11 +159,12 @@ export function buildWarehouseReturnCustomerLabelZpl(opts = {}) {
     '^LH0,0',
     `^FO${mainX},${d.margin}^GB${d.boxW},${d.boxH},2^FS`,
     `^FO${mainX},${d.companyTextTop}^A0N,${cf},${cf}^FB${mainW},1,0,C,0^FD${companyLine}^FS`,
-    barcodeOrQrBlock,
-    labelField(d.skuRowY, qrUrl ? 'Return PDF:' : FIELD_LABELS.sku),
-    valueField(d.skuRowY, qrUrl ? 'Scan QR' : skuText),
+    `^FO${d.barcodeLeft},${d.barcodeTop}^BY${barcodeModule},3,${barcodeH}^BCN,${barcodeH},N,N,N^FD${skuText}^FS`,
+    labelField(d.skuRowY, FIELD_LABELS.sku),
+    valueField(d.skuRowY, skuText),
     labelField(d.nameBlockTop, FIELD_LABELS.name),
-    `^FO${d.valueX},${d.nameBlockTop}^A0N,${vf},${vf}^FB${d.valueBoxW},${NAME_VALUE_MAX_LINES},${Math.max(1, Math.floor(d.valueFont * 0.9))},C,0^FD${nameText}^FS`,
+    `^FO${d.valueX},${d.nameBlockTop}^A0N,${vf},${vf}^FB${d.valueBoxW},1,${Math.max(1, Math.floor(d.valueFont * 0.9))},C,0^FD${nameText}^FS`,
+    `^FO${d.imageQrX},${d.qrBlockY}^BQN,2,${imageMag}^FDMA,${imageQr}^FS`,
     labelField(d.customerNameRowY, FIELD_LABELS.customerName),
     valueField(d.customerNameRowY, customerName),
     labelField(d.customerPhoneRowY, FIELD_LABELS.customerPhone),

@@ -294,7 +294,7 @@ async function executeStorageSendLine(sb, user, detail, saleId, line, qty) {
     sale_item_id: line.id,
     receipt_number: detail.sale.receipt_number,
     assembly_id: assembly.id,
-    assembly_name: assembly.name,
+    assembly_name: line.display_name || assembly.name,
     assembly_sku: assembly.family_sku || null,
     customer_id: detail.sale.customer_id || null,
     customer_name: detail.sale.customer_name || null,
@@ -311,7 +311,7 @@ async function executeStorageSendLine(sb, user, detail, saleId, line, qty) {
       item_kind: isSet ? 'set' : 'product',
       printed_components: labelTargets.map((t) => ({
         assembly_id: t.assembly.id,
-        name: t.assembly.name,
+        name: line.display_name || t.assembly.name,
         sku: t.assembly.family_sku || '',
         printed_qty: t.printQty,
       })),
@@ -328,14 +328,14 @@ async function executeStorageSendLine(sb, user, detail, saleId, line, qty) {
   for (const target of labelTargets) {
     const copies = Math.max(1, Math.floor(Number(target.printQty) || 1));
     await printWarehouseStorageSaleLabel(getFirestore(), {
-      name: target.assembly.name,
+      name: line.display_name || target.assembly.name,
       sku: target.assembly.family_sku || target.assembly.name,
       customerName: detail.sale.customer_name || 'Customer',
       customerPhone: detail.sale.customer_phone || '',
       qty: copies,
       saleDate: detail.sale.sale_date || detail.sale.created_at,
       receiptNumber: detail.sale.receipt_number || '',
-      setName: target.parentSet ? target.parentSet.name : '',
+      setName: target.parentSet ? (line.display_name || target.parentSet.name) : '',
       printedBy: row.created_by_name,
     });
     totalLabelsPrinted += copies;

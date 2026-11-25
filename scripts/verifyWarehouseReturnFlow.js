@@ -41,7 +41,7 @@ assert(returns.includes('quote_customers'), 'returns must load quote customers f
 
 assert(fs.existsSync(path.join(root, 'server/lib/zebraReturnCustomerLabelZpl.js')), 'return customer ZPL builder must exist');
 const zpl = read('server/lib/zebraReturnCustomerLabelZpl.js');
-assert(!zpl.includes('^BQN') || zpl.includes('returnNotePdfUrl'), 'return customer label QR only when PDF URL provided');
+assert(zpl.includes('^BQN') && zpl.includes('buildProductPhotoQrUrl'), 'return customer label must encode product-image QR');
 assert(zpl.includes('Customer Name:'), 'return customer label must include Customer Name');
 assert(zpl.includes('Customer #:'), 'return customer label must include Customer #');
 assert(zpl.includes('Product Name:'), 'return customer label must use Product Name');

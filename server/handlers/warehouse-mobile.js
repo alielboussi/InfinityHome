@@ -518,10 +518,13 @@ async function opUpholsteryManufacture(body, user) {
   const productQty = Math.max(1, Math.floor(Number(body.product_qty ?? body.productQty) || 1));
   const sb = getService();
   const { executeUpholsteryManufacture } = await import('../lib/upholsteryManufacture.js');
+  const producedBy = await productionWhatsappProducerName(user);
   const result = await executeUpholsteryManufacture(sb, {
     rawAssemblyId,
     productQty,
     userId: user?.id || user?.uid,
+    producedBy,
+    user,
   });
   try {
     const { notifyProductionManufactureJob } = await import('../lib/productionExpoPush.js');
@@ -1816,9 +1819,11 @@ async function opCarpentryJobFinish(body, user) {
     .trim()
     .toLowerCase();
   const destination = destRaw === 'floor1' ? 'floor1' : destRaw === 'floor2' ? 'floor2' : 'delivery';
+  const producedBy = await productionWhatsappProducerName(user);
   return finishCarpentryProductionJob(sb, {
     jobId,
     userId: user?.id || user?.uid,
+    producedBy,
     preferredStoreroomLocationId,
     destination,
   });
@@ -2020,10 +2025,12 @@ async function opProductionQuoteComplete(body, user) {
     || body.defer_delivery_queue === true
     || body.deferDeliveryQueue === true
     || sendToPainting;
+  const producedBy = await productionWhatsappProducerName(user);
   const result = await completeQuoteProductionOrder(sb, {
     quoteId,
     route,
     userId: user?.id || user?.uid,
+    producedBy,
     deferDeliveryQueue,
     destination,
     productionLineSet: body.production_line_set ?? body.productionLineSet ?? null,
@@ -2151,12 +2158,14 @@ async function opProductionQuoteLineReady(body, user) {
   if (!quoteId || !itemId) throw new Error('quote_id and item_id required');
   const sb = getService();
   const { markQuoteLinePartialReady } = await import('../lib/quoteProductionPartialComplete.js');
+  const producedBy = await productionWhatsappProducerName(user);
   return markQuoteLinePartialReady(sb, {
     quoteId,
     route,
     itemId,
     readyQty,
     userId: user?.id || user?.uid,
+    producedBy,
     productionLineSet: body.production_line_set ?? body.productionLineSet ?? null,
   });
 }
@@ -2221,11 +2230,14 @@ async function opProductionFloor2ManufacturePush(body, user) {
   if (!assemblyId) throw new Error('assembly_id required');
   const sb = getService();
   const { pushFloor2ToProductionJob } = await import('../lib/productionManufactureFloor2.js');
+  const producedBy = await productionWhatsappProducerName(user);
   const result = await pushFloor2ToProductionJob(sb, {
     assemblyId,
     productQty,
     channel,
     userId: user?.id || user?.uid,
+    producedBy,
+    user,
   });
   try {
     const { notifyProductionManufactureJob } = await import('../lib/productionExpoPush.js');

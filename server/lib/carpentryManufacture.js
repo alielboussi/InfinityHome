@@ -11,6 +11,7 @@ import {
 import {
   adjustAssemblyInventory,
   deductStoreroomBomMaterials,
+  loadAssemblyInventoryQty,
   resolveCarpentryStoreroomLocations,
 } from './storeroomBomDeduction.js';
 
@@ -27,6 +28,7 @@ export async function completeCarpentryCatalogManufacture(sb, {
   assemblyId,
   productQty = 1,
   userId = null,
+  producedBy = '',
   carpentryJobId = null,
   preferredStoreroomLocationId = null,
 }) {
@@ -105,6 +107,25 @@ export async function completeCarpentryCatalogManufacture(sb, {
     if (loc?.id) await recomputeWarehouseLocationStockServer(sb, loc.id);
   }
   await recomputeWarehouseLocationStockServer(sb, outputLocationId);
+
+  try {
+    const { queueCarpentryProductionWhatsApp, resolveCarpentryWhatsAppAlias } = await import(
+      './carpentryProductionWhatsAppNotify.js'
+    );
+    const alias = producedBy || await resolveCarpentryWhatsAppAlias(null, userId);
+    const floor2QtyAfter = await loadAssemblyInventoryQty(sb, productId, outputLocationId);
+    queueCarpentryProductionWhatsApp({
+      kind: 'floor2Credit',
+      producedBy: alias,
+      products: [{
+        name: String(assemblies.name || 'Product').trim(),
+        qty,
+        remainingQty: floor2QtyAfter,
+      }],
+    });
+  } catch (waErr) {
+    console.warn('[completeCarpentryCatalogManufacture] WhatsApp notify failed:', waErr?.message || waErr);
+  }
 
   let label_job_id = null;
   try {

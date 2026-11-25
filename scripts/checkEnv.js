@@ -473,6 +473,26 @@ try {
 }
 
 try {
+  require('child_process').execSync('node scripts/verifyUpholsteryProductionWhatsApp.js', {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+} catch (e) {
+  console.error('[upholstery-whatsapp:fail] verifyUpholsteryProductionWhatsApp.js failed.');
+  process.exit(1);
+}
+
+try {
+  require('child_process').execSync('node scripts/verifyCarpentryProductionWhatsApp.js', {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+} catch (e) {
+  console.error('[carpentry-whatsapp:fail] verifyCarpentryProductionWhatsApp.js failed.');
+  process.exit(1);
+}
+
+try {
   require('child_process').execSync('node scripts/verifyProductionStockIncrease.js', {
     cwd: process.cwd(),
     stdio: 'inherit',
