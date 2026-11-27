@@ -222,6 +222,73 @@ function uiStringsCloseIndex(s) {
   return s.lastIndexOf('\n};', presetIdx);
 }
 
+function replaceI18nObject(s, key, block) {
+  const trimmed = block.trimEnd();
+  const oneLine = new RegExp(`  ${key}: \\{[^\\n]*\\},`);
+  if (oneLine.test(s)) return s.replace(oneLine, trimmed);
+  const multi = new RegExp(`  ${key}: \\{[\\s\\S]*?\\n  \\},`);
+  if (multi.test(s)) return s.replace(multi, trimmed);
+  return ensureI18nKey(s, key, `${trimmed}\n`);
+}
+
+function patchEpsonPrintI18n(s) {
+  const rows = [
+    [
+      'deliveryPrintHint',
+      `  deliveryPrintHint: {
+    en: 'Sends the delivery note PDF to the Epson EcoTank L3250 (Email Print). No printer picker. The PDF already includes two copies.',
+    ar: 'يُرسل PDF مذكرة التسليم إلى Epson EcoTank L3250 عبر البريد. بدون اختيار طابعة. الملف يحتوي نسختين.',
+  },`,
+    ],
+    [
+      'deliveryPrintAutoHint',
+      `  deliveryPrintAutoHint: {
+    en: 'Sending the note to the Epson EcoTank L3250. Keep the printer on and connected to Wi‑Fi with internet.',
+    ar: 'جاري إرسال المذكرة إلى Epson EcoTank L3250. اترك الطابعة قيد التشغيل ومتصلة بواي فاي بالإنترنت.',
+  },`,
+    ],
+    [
+      'deliveryPrintBusy',
+      "  deliveryPrintBusy: { en: 'Sending to Epson L3250…', ar: 'جاري الإرسال إلى Epson L3250…' },",
+    ],
+    [
+      'deliveryPrintEpsonSend',
+      "  deliveryPrintEpsonSend: { en: 'Print on Epson L3250', ar: 'طباعة على Epson L3250' },",
+    ],
+    [
+      'deliveryPrintRetryHint',
+      `  deliveryPrintRetryHint: {
+    en: 'If nothing came out, check the Epson is on, Wi‑Fi has internet, Email Print is registered, then tap Retry.',
+    ar: 'إذا لم تخرج نسخة، تحقق أن Epson قيد التشغيل والواي فاي متصل بالإنترنت وتسجيل Email Print، ثم اضغط إعادة المحاولة.',
+  },`,
+    ],
+    [
+      'deliveryPrintTimeoutError',
+      `  deliveryPrintTimeoutError: {
+    en: 'Print timed out. Check the Epson Wi‑Fi/internet and Retry.',
+    ar: 'انتهت مهلة الطباعة. تحقق من واي فاي/إنترنت Epson ثم اضغط إعادة المحاولة.',
+  },`,
+    ],
+  ];
+  let next = s;
+  rows.forEach(([key, block]) => {
+    next = replaceI18nObject(next, key, block);
+  });
+  return next;
+}
+
+function patchWarehouseMobileApiErrorCode(filePath) {
+  if (!fs.existsSync(filePath)) return;
+  let s = fs.readFileSync(filePath, 'utf8');
+  if (s.includes('err.code = payload?.code')) return;
+  if (!s.includes('err.details = payload?.details || null;')) return;
+  s = s.replace(
+    'err.details = payload?.details || null;',
+    'err.details = payload?.details || null;\n    err.code = payload?.code || err.code;',
+  );
+  writePatchFile(filePath, s);
+}
+
 function ensureI18nKey(s, key, line) {
   const closeIdx = uiStringsCloseIndex(s);
   const inUiStrings = closeIdx !== -1 && s.slice(0, closeIdx).includes(`\n  ${key}:`);
@@ -325,6 +392,7 @@ function patchDeliveryHubI18n(filePath) {
   extraFarmAndOrders.forEach(([key, line]) => {
     s = ensureI18nKey(s, key, line);
   });
+  s = patchEpsonPrintI18n(s);
   if (!s.includes('sentDeliveriesSearchPlaceholder') && s.includes('sentDeliveriesTitle:')) {
     s = s.replace(
       "  sentDeliveriesTitle: { en: 'Sent deliveries', ar: 'التسليمات المرسلة' },",
@@ -495,6 +563,8 @@ export function kioskModalBottomPad(insets) {
 function main() {
   require('./ensureDeliveryQuotePrintUtils').main?.();
   copyDirMerge(overlaysRoot, kitRoot);
+  patchWarehouseMobileApiErrorCode(path.join(kitRoot, 'shared', 'warehouseMobileApi.js'));
+  patchWarehouseMobileApiErrorCode(path.join(appRoot, 'shared', 'warehouseMobileApi.js'));
   patchKioskNavLayout(path.join(kitRoot, 'lib', 'kioskLayout.js'));
   patchProductionNameClashUi(path.join(kitRoot, 'lib', 'productionNameClashUi.js'));
   patchDeliveryHubI18n(path.join(kitRoot, 'lib', 'productionKioskI18n.js'));

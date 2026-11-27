@@ -307,6 +307,11 @@ try {
     fs.existsSync(path.join(appRoot, 'deliveryKit', 'lib', 'goDashboardThenOpenNote.js')),
     'goDashboardThenOpenNote.js required so submit opens the delivery note from Dashboard',
   );
+  const overlayPrint = path.join(appRoot, 'delivery-overlays', 'lib', 'printDeliveryNoteHtml.js');
+  assert(
+    fs.existsSync(overlayPrint) && fs.readFileSync(overlayPrint, 'utf8').includes('delivery-note-cloud-print'),
+    'delivery-overlays must keep Epson Email Print so materialize cannot restore the printer picker',
+  );
   const printHtml = fs.readFileSync(
     path.join(appRoot, 'deliveryKit', 'lib', 'printDeliveryNoteHtml.js'),
     'utf8',
