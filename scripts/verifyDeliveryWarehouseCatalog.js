@@ -89,10 +89,16 @@ assert(
   'catalog-list must expose floor2LocationId for delivery Floor 2 rejection',
 );
 
-assert(printSrc.includes('DELIVERY_PRINT_TIMEOUT_MS = 30_000'), 'print must enforce 30-second timeout');
+assert(printSrc.includes('DELIVERY_PRINT_TIMEOUT_MS = 90_000'), 'print must wait for Epson Email Print');
+assert(printSrc.includes('delivery-note-cloud-print'), 'print must send PDF via Epson Email Print');
+assert(!printSrc.includes('Print.printAsync'), 'print must not open the Android printer picker');
 assert(printSrc.includes('isPrintConnectivityFailure'), 'print must classify connectivity timeouts');
 assert(printModalSrc.includes('deliveryPrintTimeoutError'), 'print modal must prompt retry after timeout');
 assert(printModalSrc.includes('isPrintConnectivityFailure'), 'print modal must treat connectivity failures as retryable');
+assert(printModalSrc.includes('deliveryPrintEpsonSend'), 'print modal must send to Epson without a printer picker');
+const cloudPrintSrc = fs.readFileSync(path.join(root, 'server/lib/deliveryNoteCloudPrint.js'), 'utf8');
+assert(cloudPrintSrc.includes('EPSON_EMAIL_PRINT_TO'), 'cloud print must use Epson Email Print address');
+assert(warehouseMobileSrc.includes('delivery-note-cloud-print'), 'warehouse-mobile must expose delivery-note-cloud-print');
 
 assert(fs.existsSync(flowDocPath), 'factory-warehouse-flow doc required');
 

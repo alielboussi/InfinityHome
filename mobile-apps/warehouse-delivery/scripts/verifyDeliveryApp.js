@@ -305,8 +305,27 @@ try {
   assert(!unified.includes('DeliveryDestinationBadges'), 'Orders badges must be department name only');
   assert(
     fs.existsSync(path.join(appRoot, 'deliveryKit', 'lib', 'goDashboardThenOpenNote.js')),
-    'goDashboardThenOpenNote.js required so submit opens PDF (not in-app A4 print)',
+    'goDashboardThenOpenNote.js required so submit opens the delivery note from Dashboard',
   );
+  const printHtml = fs.readFileSync(
+    path.join(appRoot, 'deliveryKit', 'lib', 'printDeliveryNoteHtml.js'),
+    'utf8',
+  );
+  assert(printHtml.includes('delivery-note-cloud-print'), 'Floor 1 / orders print must use Epson Email Print');
+  assert(!printHtml.includes('Print.printAsync'), 'must not open the Android printer picker');
+  const noteOut = fs.readFileSync(
+    path.join(appRoot, 'deliveryKit', 'lib', 'deliveryNoteOutput.js'),
+    'utf8',
+  );
+  assert(noteOut.includes('isFarmDeliveryDocumentKind'), 'farm notes must stay on share/send');
+  const farmDone = fs.readFileSync(
+    path.join(appRoot, 'deliveryKit', 'screens', 'WarehouseFromFarmDoneScreen.js'),
+    'utf8',
+  );
+  assert(farmDone.includes('openDeliveryNotePdf'), 'farm return done must share/send the PDF');
+  assert(farmDone.includes('forceShare: true'), 'farm return must not use Epson print');
+  const dash = fs.readFileSync(path.join(appRoot, 'screens', 'DashboardScreen.js'), 'utf8');
+  assert(dash.includes('outputDeliveryNote'), 'dashboard pending notes must dispatch Epson vs farm share');
 
   const farmHome = fs.readFileSync(
     path.join(appRoot, 'deliveryKit', 'screens', 'WarehouseFromFarmHomeScreen.js'),

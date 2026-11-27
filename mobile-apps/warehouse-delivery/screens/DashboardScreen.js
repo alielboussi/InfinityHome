@@ -9,7 +9,7 @@ import { kioskFooterBottomPad } from '../deliveryKit/lib/kioskLayout';
 import { useProductionDashboardTileLayout } from '../deliveryKit/lib/productionDashLayout';
 import { useProductionKioskLocale } from '../deliveryKit/hooks/useProductionKioskLocale';
 import { tUi } from '../deliveryKit/lib/productionKioskI18n';
-import { openDeliveryNotePdf } from '../deliveryKit/lib/openDeliveryNotePdf';
+import { outputDeliveryNote } from '../deliveryKit/lib/deliveryNoteOutput';
 import {
   isWorkshopOrDeliveryScreenAllowed,
 } from '../shared/mobileAccessManifest';
@@ -79,7 +79,7 @@ export default function DashboardScreen({
     const payload = { ...pending };
     navigation.setParams({ pendingDeliveryNote: undefined });
     const timer = setTimeout(() => {
-      void openDeliveryNotePdf({ copies: 1, ...payload }).catch(() => {});
+      void outputDeliveryNote({ copies: 1, ...payload }).catch(() => {});
     }, 300);
     return () => clearTimeout(timer);
   }, [navigation, route?.params?.pendingDeliveryNote]));

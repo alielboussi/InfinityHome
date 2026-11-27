@@ -86,6 +86,7 @@ async function dispatchWarehouseMobile(op, body, token) {
           : rawError,
     );
     err.details = payload?.details || null;
+    err.code = payload?.code || err.code;
     err.status = response.status;
     if (response.status >= 500 || !response.ok) err.network = response.status === 0;
     throw err;

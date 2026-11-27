@@ -1,5 +1,7 @@
 import { Platform } from 'react-native';
 import * as Print from 'expo-print';
+import * as FileSystem from 'expo-file-system';
+import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 
 function assertWebDocument() {
   if (typeof document === 'undefined') {
@@ -77,10 +79,10 @@ export function openDeliveryNoteHtmlInBrowser(html, title = 'Delivery note') {
   }
 }
 
-/** 30-second timeout for printing before prompting skip or retry. */
-export const DELIVERY_PRINT_TIMEOUT_MS = 30_000;
+/** Timeout for Epson Email Print (cloud) before prompting skip or retry. */
+export const DELIVERY_PRINT_TIMEOUT_MS = 90_000;
 export const PRINT_TIMEOUT_CODE = 'print_timeout';
-export const PRINT_TIMEOUT_MESSAGE = 'Print timed out after 30 seconds due to connectivity. Please check your printer connection, then tap Retry or Skip printing.';
+export const PRINT_TIMEOUT_MESSAGE = 'Print timed out. Check the Epson Wi‑Fi/internet and Retry.';
 
 export function isPrintConnectivityFailure(err) {
   const code = String(err?.code || '').toLowerCase();
@@ -103,15 +105,30 @@ export function withPrintTimeout(promise, timeoutMs = DELIVERY_PRINT_TIMEOUT_MS)
   });
 }
 
+async function sendPdfToEpsonEmailPrint(fileUri, deliveryNumber) {
+  const num = String(deliveryNumber || 'note').replace(/[^\w.-]+/g, '_') || 'note';
+  const encoding = FileSystem.EncodingType?.Base64 || 'base64';
+  const pdfBase64 = await FileSystem.readAsStringAsync(fileUri, { encoding });
+  if (!pdfBase64) throw new Error('Could not read delivery note PDF.');
+  await warehouseMobileRequest('delivery-note-cloud-print', {
+    pdf_base64: pdfBase64,
+    pdf_filename: `Delivery_${num}.pdf`,
+    delivery_number: String(deliveryNumber || '').trim(),
+    subject: `Delivery ${String(deliveryNumber || num).trim()}`,
+  });
+}
+
 /**
- * Print delivery note HTML — Android/iOS system print, or browser print dialog on web.
- * Enforces a 30-second timeout on connectivity/spooler hangs.
+ * Print delivery note HTML — Epson Email Print (L3250) with no Android printer picker.
  */
-export async function printDeliveryNoteFromHtml(html, { timeoutMs = DELIVERY_PRINT_TIMEOUT_MS } = {}) {
+export async function printDeliveryNoteFromHtml(html, {
+  timeoutMs = DELIVERY_PRINT_TIMEOUT_MS,
+  deliveryNumber = '',
+} = {}) {
   const run = async () => {
     if (Platform.OS === 'web') {
       await printHtmlInBrowser(html);
-      return;
+      return { method: 'browser' };
     }
     const file = await Print.printToFileAsync({
       html,
@@ -121,7 +138,8 @@ export async function printDeliveryNoteFromHtml(html, { timeoutMs = DELIVERY_PRI
     if (!file?.uri) {
       throw new Error('Could not build print file.');
     }
-    await Print.printAsync({ uri: file.uri });
+    await sendPdfToEpsonEmailPrint(file.uri, deliveryNumber);
+    return { method: 'epson_email_print' };
   };
-  await withPrintTimeout(run(), timeoutMs);
+  return withPrintTimeout(run(), timeoutMs);
 }

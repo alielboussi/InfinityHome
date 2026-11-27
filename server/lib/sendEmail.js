@@ -5,7 +5,9 @@ function getSmtpConfig() {
   const port = Number(process.env.SMTP_PORT || 587);
   const user = String(process.env.SMTP_USER || '').trim();
   const pass = String(process.env.SMTP_PASS || '').trim();
-  const from = String(process.env.SMTP_FROM || process.env.SMTP_USER || '').trim();
+  const from = String(
+    process.env.SMTP_FROM || process.env.EMAIL_FROM || process.env.SMTP_USER || '',
+  ).trim();
   if (!host || !user || !pass || !from) return null;
   return { host, port, user, pass, from };
 }
@@ -35,6 +37,7 @@ export async function sendEmail({
   text,
   html,
   pdfUrl,
+  pdfBuffer,
   pdfFilename,
 } = {}) {
   const cfg = getSmtpConfig();
@@ -59,7 +62,16 @@ export async function sendEmail({
   });
 
   const attachments = [];
-  if (pdfUrl) {
+  if (pdfBuffer) {
+    const buf = Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer);
+    if (buf.length) {
+      attachments.push({
+        filename: String(pdfFilename || 'document.pdf').replace(/[^\w.-]+/g, '_') || 'document.pdf',
+        content: buf,
+        contentType: 'application/pdf',
+      });
+    }
+  } else if (pdfUrl) {
     attachments.push(await attachmentFromUrl(pdfUrl, pdfFilename || 'receipt.pdf'));
   }
 

@@ -4,14 +4,12 @@ import {
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { kiosk } from './kioskStyles';
 import { buildDeliveryNotePrintHtml } from '../lib/buildDeliveryNotePrintHtml';
-import { discoverNetworkPrinters, isPrinterDiscoveryAvailable } from '../lib/discoverNetworkPrinters';
 import { getDeliveryNoteCompanyLogoDataUri } from '../lib/deliveryNoteCompanyLogo';
 import {
   isPrintConnectivityFailure,
@@ -47,30 +45,14 @@ export default function DeliveryPrintModal({
   customerPhone = '',
   onDone,
 }) {
-  const [printers, setPrinters] = useState([]);
-  const [scanning, setScanning] = useState(false);
   const [printing, setPrinting] = useState(false);
-  const [selectedId, setSelectedId] = useState('');
   const [error, setError] = useState('');
   const [printAttemptDone, setPrintAttemptDone] = useState(false);
   const autoStarted = useRef(false);
   const isReturnDoc = documentKind === 'return' || documentKind === 'return_shipment';
   const isSoldDoc = documentKind === 'sold_delivery';
 
-  const runScan = useCallback(async () => {
-    setScanning(true);
-    try {
-      const list = await discoverNetworkPrinters();
-      setPrinters(Array.isArray(list) ? list : []);
-    } catch {
-      setPrinters([]);
-    } finally {
-      setScanning(false);
-    }
-  }, []);
-
   const isWeb = Platform.OS === 'web';
-  const showLanList = !isWeb && isPrinterDiscoveryAvailable();
 
   const buildNoteHtml = useCallback(async () => {
     const copies = Math.max(1, Math.min(10, Number(copyCount) || DEFAULT_DELIVERY_PRINT_COPIES));
@@ -124,7 +106,7 @@ export default function DeliveryPrintModal({
     let printSucceeded = false;
     try {
       const html = await buildNoteHtml();
-      await printDeliveryNoteFromHtml(html);
+      await printDeliveryNoteFromHtml(html, { deliveryNumber });
       printSucceeded = true;
       if (typeof onDone === 'function') {
         onDone();
@@ -219,11 +201,9 @@ export default function DeliveryPrintModal({
       autoStarted.current = false;
       return;
     }
-    setSelectedId('');
     setError('');
     setPrintAttemptDone(false);
-    if (showLanList) runScan();
-  }, [visible, runScan, showLanList]);
+  }, [visible]);
 
   useEffect(() => {
     if (!visible || !autoPrintOnOpen || autoStarted.current || printing) return;
@@ -233,11 +213,6 @@ export default function DeliveryPrintModal({
     }, 450);
     return () => clearTimeout(timer);
   }, [visible, autoPrintOnOpen, printing, printNote]);
-
-  const onSelectPrinter = (printer) => {
-    setSelectedId(printer.id);
-    printNote();
-  };
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onDone}>
@@ -267,41 +242,6 @@ export default function DeliveryPrintModal({
             </View>
           ) : null}
 
-          {showLanList ? (
-            <>
-              <Pressable
-                style={[kiosk.btnOutlinePrimary, styles.scanBtn]}
-                onPress={runScan}
-                disabled={scanning || printing}
-              >
-                {scanning ? (
-                  <ActivityIndicator color={theme.primary} />
-                ) : (
-                  <Text style={kiosk.btnOutlinePrimaryText}>{tUi('deliveryPrintRescan', locale)}</Text>
-                )}
-              </Pressable>
-
-              <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
-                {printers.map((p) => (
-                  <Pressable
-                    key={p.id}
-                    style={[styles.row, selectedId === p.id && styles.rowOn]}
-                    onPress={() => onSelectPrinter(p)}
-                    disabled={printing}
-                  >
-                    <Text style={styles.rowTitle}>{p.name}</Text>
-                    <Text style={styles.rowSub}>{p.host}{p.port ? `:${p.port}` : ''}</Text>
-                  </Pressable>
-                ))}
-                {!scanning && !printers.length ? (
-                  <Text style={[styles.listEmpty, { textAlign }]}>
-                    {tUi('deliveryPrintNoPrinters', locale)}
-                  </Text>
-                ) : null}
-              </ScrollView>
-            </>
-          ) : null}
-
           <Pressable
             style={[kiosk.btnPrimaryBlock, styles.printBtn]}
             onPress={printNote}
@@ -311,7 +251,7 @@ export default function DeliveryPrintModal({
               <ActivityIndicator color="#0f172a" />
             ) : (
               <Text style={kiosk.btnPrimaryBlockText}>
-                {isWeb ? tUi('deliveryPrintBrowserDialog', locale) : tUi('deliveryPrintSystemPicker', locale)}
+                {isWeb ? tUi('deliveryPrintBrowserDialog', locale) : tUi('deliveryPrintEpsonSend', locale)}
               </Text>
             )}
           </Pressable>

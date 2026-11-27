@@ -38,6 +38,7 @@ import { buildWarehouseDeliveryWhatsAppMessage } from '../lib/buildWarehouseDeli
 import { buildWarehouseDeliveryWhatsAppProductGroups } from '../../src/utils/kitweDeliveryWhatsAppAdmin.js';
 import { loadWarehouseDeliveryColorContext, createWarehouseDeliveryNameFormatter } from '../lib/warehouseDeliveryNameFormatter.js';
 import { sendWarehouseDeliveryWhatsApp } from '../lib/sendWarehouseDeliveryWhatsApp.js';
+import { opDeliveryNoteCloudPrint } from '../lib/deliveryNoteCloudPrint.js';
 import { buildWarehouseDeliveryNotePdfBase64 } from '../lib/buildWarehouseDeliveryNotePdfBase64.js';
 import { normalizeMobileAccessGrant } from '../lib/mobileAccessDefaults.js';
 import {
@@ -5794,6 +5795,9 @@ export default async function handler(req, res) {
       case 'production-edit-stock-increase':
         result = await opProductionEditStockIncrease(body, user);
         break;
+      case 'delivery-note-cloud-print':
+        result = await opDeliveryNoteCloudPrint(body, user);
+        break;
       default:
         return res.status(400).json({ ok: false, error: 'Unknown op' });
     }
@@ -5804,6 +5808,7 @@ export default async function handler(req, res) {
     return res.status(status).json({
       ok: false,
       error: warehouseMobileErrorMessage(err),
+      code: err?.code || null,
       details: err?.details || null,
     });
   }
