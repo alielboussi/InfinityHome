@@ -76,6 +76,7 @@ applySingletonPackageMetro(config);
 
 const watchFolders = new Set(config.watchFolders || []);
 watchFolders.add(appSharedDir);
+watchFolders.add(path.join(projectRoot, 'src-utils'));
 watchFolders.add(path.resolve(projectRoot, '..', '..', 'src'));
 if (fs.existsSync(deliveryKitLink)) watchFolders.add(deliveryKitLink);
 config.watchFolders = [...watchFolders];

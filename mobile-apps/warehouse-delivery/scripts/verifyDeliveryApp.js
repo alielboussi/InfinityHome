@@ -252,6 +252,16 @@ try {
   assert(soldSig.includes('DeliveryCustomerDriverSection'), 'Sold deliver signature must support customer driver +');
   assert(soldSig.includes('customer_driver_name'), 'Sold deliver submit must send customer driver fields');
 
+  const srcUtilsDir = path.join(appRoot, 'src-utils');
+  assert(
+    fs.existsSync(path.join(srcUtilsDir, 'warehouseSetDeliveryRecipe.js')),
+    'src-utils/warehouseSetDeliveryRecipe.js must be vendored for EAS (repo /src is not uploaded)',
+  );
+  const setCart = fs.readFileSync(path.join(appRoot, 'deliveryKit', 'lib', 'deliverySetCart.js'), 'utf8');
+  assert(
+    !setCart.includes('src/utils/warehouseSetDeliveryRecipe'),
+    'deliverySetCart must import vendored src-utils, not monorepo src/',
+  );
   const zambia = fs.readFileSync(
     path.join(appRoot, 'deliveryKit', 'lib', 'zambiaDateTime.js'),
     'utf8',

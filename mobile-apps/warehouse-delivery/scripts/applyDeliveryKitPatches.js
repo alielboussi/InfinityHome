@@ -654,6 +654,7 @@ export function kioskModalBottomPad(insets) {
 function main() {
   require('./ensureDeliveryQuotePrintUtils').main?.();
   copyDirMerge(overlaysRoot, kitRoot);
+  require('./vendorDeliverySrcUtils').main();
   patchWarehouseMobileApiErrorCode(path.join(kitRoot, 'shared', 'warehouseMobileApi.js'));
   patchWarehouseMobileApiErrorCode(path.join(appRoot, 'shared', 'warehouseMobileApi.js'));
   patchWarehouseMobileApiFarmSetupError(path.join(kitRoot, 'shared', 'warehouseMobileApi.js'));
