@@ -52,6 +52,7 @@ try {
       'deliveryKit must be a real folder, not a symlink to production',
     );
   }
+  require('./applyDeliveryKitPatches').main();
 
   const sharedDir = path.join(appRoot, 'shared');
   const sharedMaterialized = fs.existsSync(path.join(sharedDir, '.standalone-shared'));
@@ -70,7 +71,13 @@ try {
     appJs.includes('DeliverySafeFrame') && appJs.includes('kioskAndroidNavReserve'),
     'App.js must lift all screens above the Android nav bar (DeliverySafeFrame)',
   );
-  const kioskLayout = fs.readFileSync(path.join(appRoot, 'deliveryKit', 'lib', 'kioskLayout.js'), 'utf8');
+  function readKitLibOrOverlay(name) {
+    const overlay = path.join(appRoot, 'delivery-overlays', 'lib', name);
+    const kit = path.join(appRoot, 'deliveryKit', 'lib', name);
+    if (fs.existsSync(overlay)) return fs.readFileSync(overlay, 'utf8');
+    return fs.readFileSync(kit, 'utf8');
+  }
+  const kioskLayout = readKitLibOrOverlay('kioskLayout.js');
   assert(
     kioskLayout.includes('kioskAndroidNavReserve') && kioskLayout.includes('kioskModalBottomPad'),
     'deliveryKit kioskLayout must reserve Android nav space and pad modals',
@@ -332,10 +339,7 @@ try {
     fs.existsSync(overlayPrint) && fs.readFileSync(overlayPrint, 'utf8').includes('delivery-note-cloud-print'),
     'delivery-overlays must keep Epson Email Print so materialize cannot restore the printer picker',
   );
-  const printHtml = fs.readFileSync(
-    path.join(appRoot, 'deliveryKit', 'lib', 'printDeliveryNoteHtml.js'),
-    'utf8',
-  );
+  const printHtml = readKitLibOrOverlay('printDeliveryNoteHtml.js');
   assert(printHtml.includes('delivery-note-cloud-print'), 'Floor 1 / orders print must use Epson Email Print');
   assert(!printHtml.includes('Print.printAsync'), 'must not open the Android printer picker');
   assert(
