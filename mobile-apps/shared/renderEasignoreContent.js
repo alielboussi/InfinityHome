@@ -55,8 +55,6 @@ function renderMonorepoEasignore(keepSlug) {
     '**/web-build/',
     '**/android/',
     '**/ios/',
-    '**/.standalone-materialized',
-    '**/.standalone-shared',
     '*.jks',
     '*.p8',
     '*.p12',

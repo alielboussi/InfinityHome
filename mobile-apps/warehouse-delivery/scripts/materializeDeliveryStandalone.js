@@ -221,16 +221,39 @@ function removeKitIfLink() {
   }
 }
 
-function main() {
-  if (!fs.existsSync(upholsteryRoot)) {
-    const marker = path.join(kitPath, '.standalone-materialized');
-    const homeScreen = path.join(kitPath, 'screens', 'KitweSendHomeScreen.js');
-    if (fs.existsSync(marker) && fs.existsSync(homeScreen)) {
-      console.log('[materializeDeliveryStandalone] skip — upholstery sibling missing on cloud builder; using uploaded deliveryKit');
-      return;
-    }
-    console.error('[materializeDeliveryStandalone] missing', upholsteryRoot);
+function kitCopySourcesReady() {
+  if (!fs.existsSync(upholsteryRoot)) return false;
+  return COPY_DIRS.every((dir) => fs.existsSync(path.join(upholsteryRoot, dir)));
+}
+
+function useUploadedStandaloneKit(reason) {
+  const homeScreen = path.join(kitPath, 'screens', 'KitweSendHomeScreen.js');
+  if (!fs.existsSync(homeScreen)) {
+    console.error('[materializeDeliveryStandalone] missing', upholsteryRoot, 'and no uploaded deliveryKit');
     process.exit(1);
+  }
+  writeTextFileWithRetry(
+    path.join(kitPath, '.standalone-materialized'),
+    `Using uploaded deliveryKit (${reason}) at ${new Date().toISOString()}\n`,
+  );
+  const appSharedMarker = path.join(appRoot, 'shared', '.standalone-shared');
+  if (fs.existsSync(path.join(appRoot, 'shared')) && !fs.existsSync(appSharedMarker)) {
+    writeTextFileWithRetry(
+      appSharedMarker,
+      `Using uploaded warehouse-delivery/shared (${reason}) at ${new Date().toISOString()}\n`,
+    );
+  }
+  console.log('[materializeDeliveryStandalone] skip —', reason, '; using uploaded deliveryKit');
+}
+
+function main() {
+  if (!kitCopySourcesReady()) {
+    useUploadedStandaloneKit(
+      fs.existsSync(upholsteryRoot)
+        ? 'upholstery sources incomplete on cloud builder'
+        : 'upholstery sibling missing on cloud builder',
+    );
+    return;
   }
 
   removeKitIfLink();

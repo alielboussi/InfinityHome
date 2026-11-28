@@ -35,7 +35,7 @@ Each staff app uses the same template (only **that app folder** + `mobile-apps/s
 node mobile-apps/scripts/syncEasignore.js
 ```
 
-When compression finishes, EAS should report a **much smaller** archive than ~231 MB.
+When compression finishes, EAS should report a **much smaller** archive than ~231 MB. `ensureEasignoreFor.js` also writes **repo-root** `.easignore` (gitignored) because eas-cli ignores the copy inside the app folder. A ~230 MB upload is the whole monorepo and often dies with `ECONNRESET`.
 
 ## Build profiles (EAS)
 

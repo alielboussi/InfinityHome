@@ -86,3 +86,6 @@ label-worker/installer/dist-installer/
 **/LabelPrinterInstaller.exe
 
 .vercel
+
+# Written per `npm run eas:build:android` — eas-cli reads git-root .easignore only.
+/.easignore
