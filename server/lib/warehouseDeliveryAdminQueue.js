@@ -5,6 +5,7 @@ import {
   repairEligibleForMobileDeliveryQueue,
 } from '../../src/utils/warehouseDeliveryAdminQueue.js';
 import { WAREHOUSE_RETURN_STATUSES } from '../../src/utils/warehouseReturnOrder.js';
+import { loadQuoteOrderDisplayLines, loadQuoteOrderDisplayLinesByIds } from './quoteOrderDisplayName.js';
 import {
   WAREHOUSE_FROM_LOCATION_ID,
   WAREHOUSE_TO_LOCATION_ID,
@@ -373,6 +374,15 @@ export async function registerProductionJobAwaitingDriver(sb, {
       showroom_order: false,
       quote_number: null,
     };
+  const quoteDisplay = resolvedQuoteId
+    ? await loadQuoteOrderDisplayLines(sb, resolvedQuoteId)
+    : { title: '', quote_number: null };
+  const orderName = String(
+    quoteDisplay.title
+    || (resolvedQuoteId ? (jobRow?.product_name || '') : '')
+    || (!resolvedQuoteId ? assemblyName : '')
+    || '',
+  ).trim();
   const patch = {
     ...meta,
     ...(customerFields.showroom_order ? { showroom_order: true } : {}),
@@ -385,11 +395,11 @@ export async function registerProductionJobAwaitingDriver(sb, {
       registered_at: now,
       production_job_id: String(jobRow.id),
       assembly_id: String(assemblyId),
-      assembly_name: assemblyName || assemblyId,
+      assembly_name: orderName,
       quantity: Math.max(1, Math.floor(Number(qty) || 1)),
       department,
       quote_id: resolvedQuoteId,
-      quote_number: quoteNumber || customerFields.quote_number,
+      quote_number: quoteNumber || quoteDisplay.quote_number || customerFields.quote_number,
       ...(customerFields.customer_name ? {
         customer_name: customerFields.customer_name,
         customer_phone: customerFields.customer_phone,
@@ -405,7 +415,7 @@ export async function registerProductionJobAwaitingDriver(sb, {
   try {
     const { notifyDeliveryOrderReadyForDriver } = await import('./productionExpoPush.js');
     await notifyDeliveryOrderReadyForDriver({
-      assemblyName,
+      assemblyName: orderName || assemblyName,
       qty,
       department,
       jobId: jobRow.id,
@@ -419,7 +429,7 @@ export async function registerProductionJobAwaitingDriver(sb, {
 function quoteRoutingLineItems(meta) {
   const raw = Array.isArray(meta?.lines) ? meta.lines : [];
   return raw.map((line) => {
-    const name = String(line?.name || line?.name_override || '').trim();
+    const name = String(line?.name_override || line?.name || '').trim();
     if (!name) return null;
     return {
       ...line,
@@ -616,6 +626,13 @@ async function listCompletedJobsAwaitingDriver(sb, table, department) {
     (assemblies || []).forEach((asm) => asmById.set(String(asm.id), asm));
   }
 
+  const quoteIds = [...new Set(awaiting.map(({ job, meta }) => (
+    quoteIdFromJobFields(job, meta)
+    || String(runQuoteById.get(String(meta.production_run_id || '')) || '').trim()
+    || ''
+  )).filter(Boolean))];
+  const quoteDisplayById = await loadQuoteOrderDisplayLinesByIds(sb, quoteIds);
+
   return awaiting.map(({ job, meta, admin, asmId }) => {
     const asm = asmById.get(asmId);
     const showroom_order = admin.showroom_order === true || meta.showroom_order === true;
@@ -628,19 +645,26 @@ async function listCompletedJobsAwaitingDriver(sb, table, department) {
     const quote_id = quoteIdFromJobFields(job, meta)
       || String(runQuoteById.get(String(meta.production_run_id || '')) || '').trim()
       || null;
+    const quoteDisplay = quote_id ? quoteDisplayById.get(quote_id) : null;
+    const quoteTitle = String(quoteDisplay?.title || '').trim();
+    const catalogName = String(asm?.name || '').trim();
+    const storedName = String(admin.assembly_name || job.product_name || '').trim();
+    const assembly_name = quoteTitle
+      || (!quote_id ? (storedName || catalogName) : storedName);
     return {
       production_job_id: String(job.id),
       assembly_id: asmId,
-      assembly_name: admin.assembly_name || job.product_name || asm?.name || asmId,
+      assembly_name,
       family_sku: asm?.family_sku || '',
       quantity: Math.max(1, Number(admin.quantity || job.product_qty) || 1),
       quote_id: quote_id || null,
-      quote_number: admin.quote_number || meta.quote_number || job.quote_number || null,
+      quote_number: quoteDisplay?.quote_number || admin.quote_number || meta.quote_number || job.quote_number || null,
       customer_name,
       customer_phone: String(admin.customer_phone || meta.customer_phone || job.customer_phone || '').trim() || null,
       showroom_order,
       customer_order,
       department: admin.department || department,
+      lines: quoteDisplay?.lines?.length ? quoteDisplay.lines : undefined,
       delivery_admin_stage: DELIVERY_ADMIN_STAGE.AWAITING_DRIVER,
     };
   });

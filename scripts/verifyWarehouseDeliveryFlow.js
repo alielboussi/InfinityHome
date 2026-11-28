@@ -66,6 +66,11 @@ assert(
   'order/repair WhatsApp PDF must hydrate print groups from quote/return, not catalog fallback',
 );
 assert(
+  fs.readFileSync(path.join(root, 'server/lib/warehouseDeliveryAdminQueue.js'), 'utf8')
+    .includes('loadQuoteOrderDisplayLinesByIds'),
+  'production jobs in the delivery queue must show quotation line names, not catalog assemblies',
+);
+assert(
   mobile.includes('if (adminQueueKind) pdfBase64 = \'\''),
   'order/repair WhatsApp must rebuild PDF on the server from quote/repair lines',
 );

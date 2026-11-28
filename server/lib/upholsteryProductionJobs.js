@@ -529,7 +529,7 @@ export async function finishUpholsteryProductionJob(sb, {
       jobsTable: 'upholstery_production_jobs',
       jobRow: updated,
       assemblyId: output.output_assembly_id,
-      assemblyName: output.name,
+      assemblyName: String(updated?.product_name || job.product_name || '').trim(),
       qty,
       department: 'upholstery',
       quoteId: linkedQuoteId || null,

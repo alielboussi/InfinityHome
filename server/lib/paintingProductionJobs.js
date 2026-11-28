@@ -13,7 +13,8 @@ import {
 } from './productionJobMaterials.js';
 import { readWarehouseFloor2WipImageUrl } from '../../src/utils/warehouseFloor2WipImage.js';
 import { resolveWarehouseMobileDisplayName } from '../../src/utils/warehouseMobileDisplayName.js';
-import { quoteItemLineImageUrl } from '../../src/utils/quoteProductionItemFields.js';
+import { quoteItemLineImageUrl, quoteLineOrderDisplayName } from '../../src/utils/quoteProductionItemFields.js';
+import { formatQuoteOrderLinesTitle, mapQuoteItemsToOrderDisplayLines } from './quoteOrderDisplayName.js';
 import { getLoginAccessRecord } from './loginAccess.js';
 
 const JOBS = 'painting_production_jobs';
@@ -31,26 +32,10 @@ async function paintingSenderNameForUserId(userId) {
   return name || null;
 }
 
-function quoteLineDisplayName(it, productById = null) {
-  const fromProduct = productById && it?.quote_product_id
-    ? String(productById.get(String(it.quote_product_id))?.name || '').trim()
-    : '';
-  return String(it?.name_override || it?.name || fromProduct || '').trim();
-}
-
 function formatCarpentryQuoteProductTitle(items, { quoteNumber = '' } = {}) {
-  const parts = (items || [])
-    .map((it) => {
-      const name = quoteLineDisplayName(it, null);
-      if (!name) return '';
-      const lineQty = Math.max(1, Math.floor(Number(it.quantity) || 1));
-      return lineQty > 1 ? `${name} ×${lineQty}` : name;
-    })
-    .filter(Boolean);
-  if (parts.length === 1) return parts[0];
-  if (parts.length > 1) return parts.join(' · ');
-  const num = String(quoteNumber || '').trim();
-  return num || '';
+  const title = formatQuoteOrderLinesTitle(items);
+  if (title) return title;
+  return String(quoteNumber || '').trim();
 }
 
 function firstQuoteLineImageUrl(items) {
@@ -79,9 +64,13 @@ async function loadCarpentryQuoteDisplayBundle(sb, quoteId) {
       .in('id', qpIds);
     productById = new Map((qps || []).map((p) => [String(p.id), p]));
   }
+  const namedById = new Map(
+    mapQuoteItemsToOrderDisplayLines(rawItems, productById).map((line) => [String(line.id), line]),
+  );
   const list = rawItems.map((it) => ({
     ...it,
-    name: quoteLineDisplayName(it, productById),
+    name: namedById.get(String(it.id))?.name
+      || quoteLineOrderDisplayName(it, productById.get(String(it?.quote_product_id || ''))),
     description: String(it?.description || productById.get(String(it?.quote_product_id))?.description || '').trim() || it?.description,
   }));
   let routingMeta = {};
@@ -577,8 +566,7 @@ export async function sendCarpentryQuoteToPaintingDepartment(sb, {
   const row = stripUndefinedDeep({
     id: jobId,
     assembly_id: ctx.productId,
-    product_name:
-      quoteDisplay?.product_title || String(ctx.assembly.name || '').trim(),
+    product_name: quoteDisplay?.product_title || '',
     product_sku: String(ctx.assembly.family_sku || '').trim(),
     product_qty: qty,
     status: 'ready',
@@ -973,7 +961,7 @@ export async function finishPaintingProductionJob(sb, {
       jobsTable: JOBS,
       jobRow: updated,
       assemblyId: productId,
-      assemblyName: assemblyRow?.name || productId,
+      assemblyName: String(job.product_name || '').trim(),
       qty,
       department: 'painting',
       quoteId: job.metadata?.quote_id || job.metadata?.carpentry_quote_id || null,

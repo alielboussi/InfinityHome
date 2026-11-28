@@ -92,6 +92,7 @@ assert(
 assert(printSrc.includes('DELIVERY_PRINT_TIMEOUT_MS = 90_000'), 'print must wait for Epson Email Print');
 assert(printSrc.includes('delivery-note-cloud-print'), 'print must send PDF via Epson Email Print');
 assert(!printSrc.includes('Print.printAsync'), 'print must not open the Android printer picker');
+assert(!printSrc.includes('readAsStringAsync'), 'print must not use deprecated readAsStringAsync');
 assert(printSrc.includes('isPrintConnectivityFailure'), 'print must classify connectivity timeouts');
 assert(printModalSrc.includes('deliveryPrintTimeoutError'), 'print modal must prompt retry after timeout');
 assert(printModalSrc.includes('isPrintConnectivityFailure'), 'print modal must treat connectivity failures as retryable');

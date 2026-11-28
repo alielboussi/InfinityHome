@@ -448,13 +448,12 @@ export async function finishCarpentryProductionJob(sb, {
   }
 
   if (productId && dest === 'delivery') {
-    const { data: asm } = await sb.from('warehouse_assemblies').select('name').eq('id', productId).maybeSingle();
     const { registerProductionJobAwaitingDriver } = await import('./warehouseDeliveryAdminQueue.js');
     await registerProductionJobAwaitingDriver(sb, {
       jobsTable: JOBS,
-      jobRow: { id: job.id, metadata: updated?.metadata || meta },
+      jobRow: { id: job.id, product_name: job.product_name, metadata: updated?.metadata || meta },
       assemblyId: productId,
-      assemblyName: asm?.name || productId,
+      assemblyName: String(job.product_name || '').trim(),
       qty,
       department: 'carpentry',
       quoteId: linkedQuoteId || null,

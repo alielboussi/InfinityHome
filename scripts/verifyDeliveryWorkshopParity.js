@@ -67,6 +67,26 @@ assert(mobile.includes("'upholstery-job-check-unit'"), 'warehouse-mobile must ro
 const paintingFinish = read('server/lib/paintingProductionJobs.js');
 assert(paintingFinish.includes('registerProductionJobAwaitingDriver'), 'painting finish → delivery virtual');
 assert(paintingFinish.includes("dest === 'floor1'"), 'painting finish must support Floor 1 storage path');
+assert(
+  paintingFinish.includes('quoteLineOrderDisplayName'),
+  'painting quote titles must use Hassan/quote names, not catalog item.name first',
+);
+assert(
+  !paintingFinish.includes('assemblyName: assemblyRow?.name'),
+  'painting → delivery must not register Floor 1/2 catalog assembly names',
+);
+assert(
+  queue.includes('loadQuoteOrderDisplayLines'),
+  'delivery queue must resolve order names from quotation items',
+);
+assert(
+  queue.includes('name_override || line?.name'),
+  'quote routing line names must prefer name_override over catalog name',
+);
+assert(
+  fs.existsSync(path.join(root, 'server/lib/quoteOrderDisplayName.js')),
+  'quoteOrderDisplayName.js required so painting/carpentry/upholstery share quote names',
+);
 
 const carpentryFinish = read('server/lib/carpentryProductionJobs.js');
 assert(carpentryFinish.includes('registerProductionJobAwaitingDriver'), 'carpentry finish → delivery virtual');

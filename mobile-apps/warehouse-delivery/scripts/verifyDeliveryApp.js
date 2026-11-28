@@ -338,6 +338,16 @@ try {
   );
   assert(printHtml.includes('delivery-note-cloud-print'), 'Floor 1 / orders print must use Epson Email Print');
   assert(!printHtml.includes('Print.printAsync'), 'must not open the Android printer picker');
+  assert(
+    !printHtml.includes('readAsStringAsync'),
+    'Epson print must not use deprecated FileSystem.readAsStringAsync (it throws and blocks cloud print)',
+  );
+  assert(
+    printHtml.includes('new File') && printHtml.includes("from 'expo-file-system'"),
+    'Epson print must read the PDF with the Expo File API',
+  );
+  const overlayPrintSrc = fs.readFileSync(overlayPrint, 'utf8');
+  assert(!overlayPrintSrc.includes('readAsStringAsync'), 'delivery-overlays print must not use readAsStringAsync');
   const noteOut = fs.readFileSync(
     path.join(appRoot, 'deliveryKit', 'lib', 'deliveryNoteOutput.js'),
     'utf8',
