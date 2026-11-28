@@ -567,7 +567,6 @@ export function formatQuoteItemAccessoriesPdfLine(it) {
   return `Included Accessories : ${fields.accessories.join(', ')}`;
 }
 
-/** Line row stored on quote_production_routing.metadata.lines and returned to workshop apps. */
 /** Order-facing product name: Hassan/quote text first, catalog `name` last. */
 export function quoteLineOrderDisplayName(line, quoteProduct = null) {
   const override = String(line?.name_override || '').trim();
@@ -584,6 +583,7 @@ export function quoteLineOrderDisplayName(line, quoteProduct = null) {
   return String(line?.name || '').trim();
 }
 
+/** Line row stored on quote_production_routing.metadata.lines and returned to workshop apps. */
 export function quoteItemLineImageUrl(it) {
   const meta = it?.metadata && typeof it.metadata === 'object' ? it.metadata : {};
   return trimOrNull(

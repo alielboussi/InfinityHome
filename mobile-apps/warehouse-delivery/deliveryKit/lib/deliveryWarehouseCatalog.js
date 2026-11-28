@@ -117,3 +117,20 @@ export function filterAssembliesToDeliveryWarehouse(catalog, assemblies) {
 export function filterAssembliesForDeliveryFloor1Only(catalog) {
   return filterAssembliesForDeliveryWarehouse(catalog);
 }
+
+/** Floor 2 WIP with on-hand qty — Farm Deliveries send (Floor 2 → farm). */
+export function filterAssembliesForDeliveryFloor2Farm(catalog) {
+  const list = catalog?.assemblies;
+  if (!Array.isArray(list) || !list.length) return [];
+  const { assemblyWarehouseQty } = catalogStockMaps(catalog);
+  return list.filter((assembly) => {
+    if (!assembly?.id) return false;
+    if (isStoreroomMaterial(assembly)) return false;
+    const id = String(assembly.id);
+    const qty = Math.max(
+      0,
+      Number(assemblyWarehouseQty?.[id] ?? catalog?.assemblyWarehouseQty?.[id] ?? 0) || 0,
+    );
+    return qty > 0;
+  });
+}

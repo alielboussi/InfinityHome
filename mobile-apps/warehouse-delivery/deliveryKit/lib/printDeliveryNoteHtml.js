@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import * as Print from 'expo-print';
-import * as FileSystem from 'expo-file-system';
+import { File } from 'expo-file-system';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 
 function assertWebDocument() {
@@ -105,10 +105,32 @@ export function withPrintTimeout(promise, timeoutMs = DELIVERY_PRINT_TIMEOUT_MS)
   });
 }
 
+function uint8ToBase64(bytes) {
+  const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  const chunk = 0x8000;
+  let binary = '';
+  for (let i = 0; i < u8.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, u8.subarray(i, i + chunk));
+  }
+  if (typeof btoa === 'function') return btoa(binary);
+  throw new Error('Could not encode delivery note PDF.');
+}
+
+async function readPdfFileAsBase64(fileUri) {
+  const file = new File(fileUri);
+  if (typeof file.base64 === 'function') {
+    const raw = String(await file.base64() || '').trim();
+    if (raw) return raw.replace(/^data:[^;]+;base64,/i, '');
+  }
+  const bytes = await file.bytes();
+  const encoded = uint8ToBase64(bytes);
+  if (!encoded) throw new Error('Could not read delivery note PDF.');
+  return encoded;
+}
+
 async function sendPdfToEpsonEmailPrint(fileUri, deliveryNumber) {
   const num = String(deliveryNumber || 'note').replace(/[^\w.-]+/g, '_') || 'note';
-  const encoding = FileSystem.EncodingType?.Base64 || 'base64';
-  const pdfBase64 = await FileSystem.readAsStringAsync(fileUri, { encoding });
+  const pdfBase64 = await readPdfFileAsBase64(fileUri);
   if (!pdfBase64) throw new Error('Could not read delivery note PDF.');
   await warehouseMobileRequest('delivery-note-cloud-print', {
     pdf_base64: pdfBase64,

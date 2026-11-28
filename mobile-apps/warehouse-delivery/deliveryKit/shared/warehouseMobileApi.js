@@ -135,6 +135,30 @@ export async function flushWarehouseMobileOfflineQueue() {
   });
 }
 
+export function mapFarmWarehouseSetupError(raw, locale, tUi) {
+  const msg = String(raw || '').trim();
+  const translate = (key, fallback) => {
+    if (typeof tUi === 'function') {
+      const text = String(tUi(key, locale) || '').trim();
+      if (text && text !== key) return text;
+    }
+    return fallback || msg;
+  };
+  if (/floor 2 location is not configured/i.test(msg)) {
+    return translate(
+      'deliveryFarmSetupFloor2Missing',
+      'Warehouse Floor 2 is not configured.',
+    );
+  }
+  if (/farm warehouse/i.test(msg) && /not configured/i.test(msg)) {
+    return translate(
+      'deliveryFarmSetupFarmMissing',
+      'Farm Warehouse is not configured.',
+    );
+  }
+  return msg;
+}
+
 export function isLikelyNetworkError(err) {
   if (!err) return false;
   if (err.code === 'auth') return false;

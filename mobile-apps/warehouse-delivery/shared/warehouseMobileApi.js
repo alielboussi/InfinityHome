@@ -86,6 +86,7 @@ async function dispatchWarehouseMobile(op, body, token) {
           : rawError,
     );
     err.details = payload?.details || null;
+    err.code = payload?.code || err.code;
     err.status = response.status;
     if (response.status >= 500 || !response.ok) err.network = response.status === 0;
     throw err;
@@ -132,6 +133,30 @@ export async function flushWarehouseMobileOfflineQueue() {
       return !isLikelyNetworkError(e);
     }
   });
+}
+
+export function mapFarmWarehouseSetupError(raw, locale, tUi) {
+  const msg = String(raw || '').trim();
+  const translate = (key, fallback) => {
+    if (typeof tUi === 'function') {
+      const text = String(tUi(key, locale) || '').trim();
+      if (text && text !== key) return text;
+    }
+    return fallback || msg;
+  };
+  if (/floor 2 location is not configured/i.test(msg)) {
+    return translate(
+      'deliveryFarmSetupFloor2Missing',
+      'Warehouse Floor 2 is not configured.',
+    );
+  }
+  if (/farm warehouse/i.test(msg) && /not configured/i.test(msg)) {
+    return translate(
+      'deliveryFarmSetupFarmMissing',
+      'Farm Warehouse is not configured.',
+    );
+  }
+  return msg;
 }
 
 export function isLikelyNetworkError(err) {

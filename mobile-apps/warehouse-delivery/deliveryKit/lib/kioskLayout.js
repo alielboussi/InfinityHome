@@ -27,20 +27,23 @@ export function kioskScreenEdgesSafe(insets, extraBottom = 8) {
 }
 
 /**
- * Extra gap above flow buttons. Android nav chrome is reserved by UpholsterySafeFrame in App.js
- * so this is not the full nav height (avoids double padding).
+ * Extra gap above flow buttons. Android nav chrome is reserved by DeliverySafeFrame in App.js.
  */
 export function kioskFooterBottomPad(_insets) {
   return 16;
 }
 
-/** Modals sit above the window (outside UpholsterySafeFrame) — include the nav reserve. */
+/** Modals sit above the window (outside DeliverySafeFrame) — include the nav reserve. */
 export function kioskModalBottomPad(insets) {
   return kioskAndroidNavReserve(insets) + 12;
 }
 
 export function kioskTextAlign(locale) {
   return locale === 'ar' ? 'right' : 'left';
+}
+
+export function kioskRowDirection(locale) {
+  return locale === 'ar' ? 'row-reverse' : 'row';
 }
 
 /** Physical cm → layout dp (160 dp per inch). */
