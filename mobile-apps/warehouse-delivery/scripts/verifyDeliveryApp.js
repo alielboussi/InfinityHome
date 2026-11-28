@@ -75,6 +75,10 @@ try {
     kioskLayout.includes('kioskAndroidNavReserve') && kioskLayout.includes('kioskModalBottomPad'),
     'deliveryKit kioskLayout must reserve Android nav space and pad modals',
   );
+  assert(
+    kioskLayout.includes('export function kioskRowDirection'),
+    'kioskLayout must export kioskRowDirection for Floor 1 set component rows',
+  );
   assert(appJs.includes('./deliveryKit/components/ProductionAppAuthGate'), 'App.js must import auth gate from ./deliveryKit');
   assert(appJs.includes('./shared/MobileScreenGate'), 'App.js must import MobileScreenGate from ./shared');
   assert(!appJs.includes('ReturnOrders'), 'Delivery app must not register return/repair routes — use workshop apps');
@@ -112,6 +116,18 @@ try {
     deliveryCatalog.includes('filterAssembliesForDeliveryFloor1Only'),
     'deliveryWarehouseCatalog must export filterAssembliesForDeliveryFloor1Only for Kitwe Send',
   );
+  assert(
+    deliveryCatalog.includes('filterAssembliesForDeliveryFloor2Farm'),
+    'deliveryWarehouseCatalog must export filterAssembliesForDeliveryFloor2Farm for Farm send',
+  );
+  const kitMobileApi = fs.readFileSync(
+    path.join(appRoot, 'deliveryKit', 'shared', 'warehouseMobileApi.js'),
+    'utf8',
+  );
+  assert(
+    kitMobileApi.includes('export function mapFarmWarehouseSetupError'),
+    'warehouseMobileApi must map farm setup errors (otherwise Floor 1/farm session errors crash)',
+  );
 
   const kitweHome = fs.readFileSync(
     path.join(appRoot, 'deliveryKit', 'screens', 'KitweSendHomeScreen.js'),
@@ -127,6 +143,10 @@ try {
   assert(
     kitweHome.includes('deliverySetPartialHint') && kitweHome.includes('kioskRowDirection'),
     'Kitwe partial set UI must respect locale row direction and i18n',
+  );
+  assert(
+    kitweHome.includes('filterAssembliesForDeliveryFloor2Farm'),
+    'Farm send (same screen as Floor 1) must filter Floor 2 catalog',
   );
   assert(kitweHome.includes("'delivery-session-open'"), 'Kitwe send must open delivery session');
   assert(

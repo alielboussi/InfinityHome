@@ -205,14 +205,40 @@ function patchProductionNameClashUi(filePath) {
 function patchDeliveryWarehouseCatalog(filePath) {
   if (!fs.existsSync(filePath)) return;
   let s = fs.readFileSync(filePath, 'utf8');
-  if (s.includes('filterAssembliesForDeliveryFloor1Only')) return;
-  const tail = `
+  let changed = false;
+  if (!s.includes('filterAssembliesForDeliveryFloor1Only')) {
+    s = `${s.trimEnd()}
+
 /** Floor 1 stock only — name used by Kitwe Send hub screen. */
 export function filterAssembliesForDeliveryFloor1Only(catalog) {
   return filterAssembliesForDeliveryWarehouse(catalog);
 }
 `;
-  writePatchFile(filePath, `${s.trimEnd()}\n${tail}`);
+    changed = true;
+  }
+  if (!s.includes('filterAssembliesForDeliveryFloor2Farm')) {
+    s = `${s.trimEnd()}
+
+/** Floor 2 WIP with on-hand qty — Farm Deliveries send (Floor 2 → farm). */
+export function filterAssembliesForDeliveryFloor2Farm(catalog) {
+  const list = catalog?.assemblies;
+  if (!Array.isArray(list) || !list.length) return [];
+  const { assemblyWarehouseQty } = catalogStockMaps(catalog);
+  return list.filter((assembly) => {
+    if (!assembly?.id) return false;
+    if (isStoreroomMaterial(assembly)) return false;
+    const id = String(assembly.id);
+    const qty = Math.max(
+      0,
+      Number(assemblyWarehouseQty?.[id] ?? catalog?.assemblyWarehouseQty?.[id] ?? 0) || 0,
+    );
+    return qty > 0;
+  });
+}
+`;
+    changed = true;
+  }
+  if (changed) writePatchFile(filePath, s);
 }
 
 function uiStringsCloseIndex(s) {
@@ -275,6 +301,42 @@ function patchEpsonPrintI18n(s) {
     next = replaceI18nObject(next, key, block);
   });
   return next;
+}
+
+function patchWarehouseMobileApiFarmSetupError(filePath) {
+  if (!fs.existsSync(filePath)) return;
+  let s = fs.readFileSync(filePath, 'utf8');
+  if (s.includes('export function mapFarmWarehouseSetupError')) return;
+  if (!s.includes('export function isLikelyNetworkError')) return;
+  s = s.replace(
+    'export function isLikelyNetworkError(err) {',
+    `export function mapFarmWarehouseSetupError(raw, locale, tUi) {
+  const msg = String(raw || '').trim();
+  const translate = (key, fallback) => {
+    if (typeof tUi === 'function') {
+      const text = String(tUi(key, locale) || '').trim();
+      if (text && text !== key) return text;
+    }
+    return fallback || msg;
+  };
+  if (/floor 2 location is not configured/i.test(msg)) {
+    return translate(
+      'deliveryFarmSetupFloor2Missing',
+      'Warehouse Floor 2 is not configured.',
+    );
+  }
+  if (/farm warehouse/i.test(msg) && /not configured/i.test(msg)) {
+    return translate(
+      'deliveryFarmSetupFarmMissing',
+      'Farm Warehouse is not configured.',
+    );
+  }
+  return msg;
+}
+
+export function isLikelyNetworkError(err) {`,
+  );
+  writePatchFile(filePath, s);
 }
 
 function patchWarehouseMobileApiErrorCode(filePath) {
@@ -388,6 +450,8 @@ function patchDeliveryHubI18n(filePath) {
     ["cardCustomer", "  cardCustomer: { en: 'Customer', ar: 'الزبون' },"],
     ["cardDepartment", "  cardDepartment: { en: 'Department', ar: 'القسم' },"],
     ["cardQuoteNo", "  cardQuoteNo: { en: 'Quote #', ar: 'رقم العرض' },"],
+    ["deliveryFarmSetupFloor2Missing", "  deliveryFarmSetupFloor2Missing: { en: 'Warehouse Floor 2 is not configured.', ar: 'مستودع الطابق 2 غير مُعدّ.' },"],
+    ["deliveryFarmSetupFarmMissing", "  deliveryFarmSetupFarmMissing: { en: 'Farm Warehouse is not configured.', ar: 'مستودع المزرعة غير مُعدّ.' },"],
   ];
   extraFarmAndOrders.forEach(([key, line]) => {
     s = ensureI18nKey(s, key, line);
@@ -527,6 +591,33 @@ function patchDeliveryOrderQueue(filePath) {
   writePatchFile(filePath, s);
 }
 
+function patchKioskRowDirection(filePath) {
+  if (!fs.existsSync(filePath)) return;
+  let s = fs.readFileSync(filePath, 'utf8');
+  if (s.includes('export function kioskRowDirection')) return;
+  if (!s.includes('export function kioskTextAlign')) {
+    s = `${s.trimEnd()}
+
+export function kioskRowDirection(locale) {
+  return locale === 'ar' ? 'row-reverse' : 'row';
+}
+`;
+    writePatchFile(filePath, s);
+    return;
+  }
+  s = s.replace(
+    /export function kioskTextAlign\(locale\) \{\r?\n  return locale === 'ar' \? 'right' : 'left';\r?\n\}/,
+    `export function kioskTextAlign(locale) {
+  return locale === 'ar' ? 'right' : 'left';
+}
+
+export function kioskRowDirection(locale) {
+  return locale === 'ar' ? 'row-reverse' : 'row';
+}`,
+  );
+  writePatchFile(filePath, s);
+}
+
 function patchKioskNavLayout(filePath) {
   if (!fs.existsSync(filePath)) return;
   let s = fs.readFileSync(filePath, 'utf8');
@@ -565,7 +656,10 @@ function main() {
   copyDirMerge(overlaysRoot, kitRoot);
   patchWarehouseMobileApiErrorCode(path.join(kitRoot, 'shared', 'warehouseMobileApi.js'));
   patchWarehouseMobileApiErrorCode(path.join(appRoot, 'shared', 'warehouseMobileApi.js'));
+  patchWarehouseMobileApiFarmSetupError(path.join(kitRoot, 'shared', 'warehouseMobileApi.js'));
+  patchWarehouseMobileApiFarmSetupError(path.join(appRoot, 'shared', 'warehouseMobileApi.js'));
   patchKioskNavLayout(path.join(kitRoot, 'lib', 'kioskLayout.js'));
+  patchKioskRowDirection(path.join(kitRoot, 'lib', 'kioskLayout.js'));
   patchProductionNameClashUi(path.join(kitRoot, 'lib', 'productionNameClashUi.js'));
   patchDeliveryHubI18n(path.join(kitRoot, 'lib', 'productionKioskI18n.js'));
   patchDeliveryWarehouseCatalog(path.join(kitRoot, 'lib', 'deliveryWarehouseCatalog.js'));
